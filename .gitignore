@@ -1,0 +1,40 @@
+# Node.js
+**/node_modules/
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/.next/
+backend/test_output.txt
+
+# Flutter
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.metadata
+**/.packages
+**/*.iml
+
+# IDEs
+**/.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Debug/test artifacts
+backend/auth_result.json
+backend/order_result.json
+backend/*.txt
+backend/tests/*.txt
+
+# Uploads (use Cloudinary instead)
+backend/uploads/
+backend/public/uploads/
+
+# Tmp scripts
+backend/tmp/
