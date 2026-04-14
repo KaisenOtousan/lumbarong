@@ -35,34 +35,7 @@ export default function InventoryPage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-
-  const getCategoryList = (product) => {
-    if (Array.isArray(product?.categories)) {
-      return product.categories.map((c) => String(c).trim()).filter(Boolean);
-    }
-
-    if (typeof product?.categories === "string") {
-      const raw = product.categories.trim();
-      if (!raw) return [];
-
-      if (raw.startsWith("[")) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            return parsed.map((c) => String(c).trim()).filter(Boolean);
-          }
-        } catch (_) {}
-      }
-
-      return [raw];
-    }
-
-    if (typeof product?.category === "string" && product.category.trim()) {
-      return [product.category.trim()];
-    }
-
-    return [];
-  };
+  const [statusFilter, setStatusFilter] = useState("All");
 
   const fetchProducts = async () => {
     try {
@@ -161,8 +134,14 @@ export default function InventoryPage() {
                  <button onClick={() => setView("list")} className={`p-2 rounded-lg transition-all ${view === "list" ? 'bg-[var(--bark)] text-white shadow-md' : 'text-[var(--muted)] hover:bg-[var(--cream)]'}`}><ListIcon className="w-4 h-4" /></button>
                  <button onClick={() => setView("grid")} className={`p-2 rounded-lg transition-all ${view === "grid" ? 'bg-[var(--bark)] text-white shadow-md' : 'text-[var(--muted)] hover:bg-[var(--cream)]'}`}><LayoutGrid className="w-4 h-4" /></button>
               </div>
-              <button className="flex items-center gap-2 px-6 py-3 bg-white border border-[var(--border)] rounded-xl text-xs font-bold uppercase tracking-widest text-[var(--muted)] hover:text-[var(--rust)] hover:border-[var(--rust)] transition-all">
-                 <Filter className="w-4 h-4" /> Filter Status
+              <button 
+                onClick={() => {
+                  const filters = ["All", "Active", "Low Stock", "Out of Stock"];
+                  setStatusFilter(filters[(filters.indexOf(statusFilter) + 1) % filters.length]);
+                }}
+                className="flex items-center gap-2 px-6 py-3 bg-white border border-[var(--border)] rounded-xl text-xs font-bold uppercase tracking-widest text-[var(--muted)] hover:text-[var(--rust)] hover:border-[var(--rust)] transition-all w-48 justify-center"
+              >
+                 <Filter className="w-4 h-4 shrink-0" /> {statusFilter === "All" ? "Filter Status" : statusFilter}
               </button>
            </div>
         </div>
@@ -179,13 +158,13 @@ export default function InventoryPage() {
         ) : (
           <div className={`grid ${view === "list" ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"} gap-6`}>
             {products
-              .filter((p) => {
-                const q = searchTerm.toLowerCase();
-                const categoriesText = getCategoryList(p).join(" ").toLowerCase();
-                return p.name.toLowerCase().includes(q) || categoriesText.includes(q);
+              .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || (p.categories && p.categories.join(' ').toLowerCase().includes(searchTerm.toLowerCase())))
+              .filter(p => {
+                if (statusFilter === "All") return true;
+                const status = p.stock > 5 ? 'Active' : p.stock > 0 ? 'Low Stock' : 'Out of Stock';
+                return status === statusFilter;
               })
               .map((product, i) => {
-              const categoryList = getCategoryList(product);
               const status = product.stock > 5 ? 'Active' : product.stock > 0 ? 'Low Stock' : 'Out of Stock';
               return (
               <motion.div 
@@ -230,7 +209,7 @@ export default function InventoryPage() {
                    <div className="hidden md:flex flex-col gap-1">
                       <div className="text-[10px] uppercase font-bold tracking-widest text-[var(--muted)] opacity-60">Listing Category</div>
                       <div className="text-xs font-bold text-[var(--muted)]">
-                       {categoryList.length > 0 ? categoryList.join(', ') : "Uncategorized"}
+                         {product.categories?.join(', ') || "Uncategorized"}
                       </div>
                    </div>
 

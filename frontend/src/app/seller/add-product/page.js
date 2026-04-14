@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { Camera as CapCamera, CameraResultType } from "@capacitor/camera";
 import { Capacitor } from "@capacitor/core";
+import { fetchCategories, normalizeCategories } from "@/lib/categories";
 
 export default function AddProductPage() {
   const [loading, setLoading] = useState(false);
@@ -13,34 +14,37 @@ export default function AddProductPage() {
     name: "",
     description: "",
     price: "",
-    categories: ["Formal"],
+    categories: [],
     stock: "",
     sizes: ["S", "M", "L", "XL"],
     shippingFee: "",
-    shippingDays: ""
+    shippingDays: "",
+    gcashNumber: "",
+    mayaNumber: "",
+    allowGcash: true,
+    allowMaya: true
   });
+  const [gcashQrFile, setGcashQrFile] = useState(null);
+  const [mayaQrFile, setMayaQrFile] = useState(null);
+  const [gcashQrPreview, setGcashQrPreview] = useState(null);
+  const [mayaQrPreview, setMayaQrPreview] = useState(null);
   const [variations, setVariations] = useState([]); // Array of { file, label, preview }
   const [categories, setCategories] = useState([]);
   const [fetchingCategories, setFetchingCategories] = useState(true);
 
   React.useEffect(() => {
-    const fetchCategories = async () => {
+    const loadCategories = async () => {
       try {
-        const res = await api.get("/categories");
-        setCategories(res.data);
+        const data = await fetchCategories();
+        setCategories(normalizeCategories(data));
       } catch (err) {
         console.error("Failed to fetch categories");
-        setCategories([
-          { name: "Formal" },
-          { name: "Casual" },
-          { name: "Traditional" },
-          { name: "Modern Elite" }
-        ]);
+        setCategories([]);
       } finally {
         setFetchingCategories(false);
       }
     };
-    fetchCategories();
+    loadCategories();
   }, []);
 
   const handleImageChange = (e) => {
@@ -99,32 +103,62 @@ export default function AddProductPage() {
       alert("Please upload at least one product variation image.");
       return;
     }
-    if (Number(formData.price) <= 0) {
-      alert("Price must be a positive number.");
+    if (Number(formData.price) <= 0 || Number(formData.price) > 10000) {
+      alert("Price must be between 1 and 10,000 PHP.");
       return;
     }
-    if (Number(formData.stock) < 0) {
-      alert("Stock cannot be negative.");
+    if (Number(formData.stock) < 0 || Number(formData.stock) > 500) {
+      alert("Stock quantity must be between 0 and 500 units.");
+      return;
+    }
+    if (formData.shippingFee && (Number(formData.shippingFee) < 0 || Number(formData.shippingFee) > 500)) {
+      alert("Shipping fee cannot exceed 500 PHP.");
+      return;
+    }
+    if (formData.shippingDays && (Number(formData.shippingDays) < 1 || Number(formData.shippingDays) > 30)) {
+      alert("Shipping days must be between 1 and 30 days.");
       return;
     }
     setLoading(true);
 
-    const data = new FormData();
-    data.append('name', formData.name);
-    data.append('description', formData.description);
-    data.append('price', formData.price);
-    data.append('categories', JSON.stringify(formData.categories));
-    data.append('stock', formData.stock);
-    data.append('sizes', JSON.stringify(formData.sizes));
-    data.append('shippingFee', formData.shippingFee || 0);
-    data.append('shippingDays', formData.shippingDays || 3);
-
-    variations.forEach((v) => {
-      data.append('images', v.file);
-    });
-    data.append('variationNames', JSON.stringify(variations.map(v => v.label || "Original")));
-
     try {
+      let gcashQrUrl = "";
+      let mayaQrUrl = "";
+
+      if (gcashQrFile) {
+        const gFormData = new FormData();
+        gFormData.append('image', gcashQrFile);
+        const gRes = await api.post('/upload', gFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        gcashQrUrl = gRes.data.url;
+      }
+      if (mayaQrFile) {
+        const mFormData = new FormData();
+        mFormData.append('image', mayaQrFile);
+        const mRes = await api.post('/upload', mFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        mayaQrUrl = mRes.data.url;
+      }
+
+      const data = new FormData();
+      data.append('name', formData.name);
+      data.append('description', formData.description);
+      data.append('price', formData.price);
+      data.append('categories', JSON.stringify(formData.categories));
+      data.append('stock', formData.stock);
+      data.append('sizes', JSON.stringify(formData.sizes));
+      data.append('shippingFee', formData.shippingFee || 0);
+      data.append('shippingDays', formData.shippingDays || 3);
+      data.append('gcashNumber', formData.gcashNumber);
+      data.append('gcashQrCode', gcashQrUrl);
+      data.append('mayaNumber', formData.mayaNumber);
+      data.append('mayaQrCode', mayaQrUrl);
+      data.append('allowGcash', formData.allowGcash);
+      data.append('allowMaya', formData.allowMaya);
+
+      variations.forEach((v) => {
+        data.append('images', v.file);
+      });
+      data.append('variationNames', JSON.stringify(variations.map(v => v.label || "Original")));
+
       await api.post("/products", data, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -134,6 +168,7 @@ export default function AddProductPage() {
       alert("Product listed successfully!");
       window.location.href = "/seller/inventory";
     } catch (error) {
+      console.error(error);
       alert(error.response?.data?.message || "Failed to list product.");
     } finally {
       setLoading(false);
@@ -188,9 +223,10 @@ export default function AddProductPage() {
                     type="number"
                     required
                     min="1"
+                    max="10000"
                     step="0.01"
                     className="w-full px-4 py-3 bg-[var(--input-bg)] border border-[var(--border)] rounded-xl focus:outline-none focus:border-[var(--rust)] transition-all"
-                    placeholder="2500"
+                    placeholder="Max ₱10,000"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                   />
@@ -201,9 +237,10 @@ export default function AddProductPage() {
                     type="number"
                     required
                     min="0"
+                    max="500"
                     step="1"
                     className="w-full px-4 py-3 bg-[var(--input-bg)] border border-[var(--border)] rounded-xl focus:outline-none focus:border-[var(--rust)] transition-all"
-                    placeholder="10"
+                    placeholder="Max 500"
                     value={formData.stock}
                     onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                   />
@@ -213,9 +250,10 @@ export default function AddProductPage() {
                   <input
                     type="number"
                     min="0"
+                    max="500"
                     step="0.01"
                     className="w-full px-4 py-3 bg-[var(--input-bg)] border border-[var(--border)] rounded-xl focus:outline-none focus:border-[var(--rust)] transition-all"
-                    placeholder="0"
+                    placeholder="Max ₱500"
                     value={formData.shippingFee}
                     onChange={(e) => setFormData({ ...formData, shippingFee: e.target.value })}
                   />
@@ -225,15 +263,132 @@ export default function AddProductPage() {
                   <input
                     type="number"
                     min="1"
+                    max="30"
                     step="1"
                     className="w-full px-4 py-3 bg-[var(--input-bg)] border border-[var(--border)] rounded-xl focus:outline-none focus:border-[var(--rust)] transition-all"
-                    placeholder="3–7 days"
+                    placeholder="Max 30 days"
                     value={formData.shippingDays}
                     onChange={(e) => setFormData({ ...formData, shippingDays: e.target.value })}
                   />
                 </div>
               </div>
             </div>
+
+            <div className="artisan-card space-y-6">
+               <h3 className="text-lg font-bold">Payment Configuration</h3>
+               <p className="text-[10px] text-[var(--muted)] -mt-4 uppercase tracking-widest leading-relaxed">Optional: Leave blank to use your Seller Profile's global payment details.</p>
+               <div className="grid grid-cols-1 gap-6">
+                 {/* GCash */}
+                 <div className="space-y-4 p-4 border border-[var(--border)] rounded-2xl bg-[var(--input-bg)]/30">
+                   <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#2D5CC5]">
+                     <div className="flex items-center gap-2">
+                       <div className="w-2 h-2 rounded-full bg-[#2D5CC5]" /> GCash Method
+                     </div>
+                     <label className="flex items-center gap-2 cursor-pointer group">
+                       <span className="text-[9px] font-bold text-[var(--muted)] group-hover:text-[#2D5CC5] transition-colors">{formData.allowGcash ? 'AVAILABLE' : 'DISABLED'}</span>
+                       <input 
+                         type="checkbox" 
+                         className="w-4 h-4 accent-[#2D5CC5] rounded cursor-pointer"
+                         checked={formData.allowGcash}
+                         onChange={(e) => setFormData({ ...formData, allowGcash: e.target.checked })}
+                       />
+                     </label>
+                   </div>
+                   <div className="space-y-2">
+                     <label className="text-[9px] font-black uppercase tracking-widest text-[var(--muted)]">GCash Number</label>
+                     <input
+                       type="text"
+                       className="w-full px-4 py-3 bg-white border border-[var(--border)] rounded-xl focus:outline-none focus:border-[#2D5CC5] transition-all text-sm"
+                       placeholder="e.g. 0917 123 4567"
+                       value={formData.gcashNumber}
+                       onChange={(e) => setFormData({ ...formData, gcashNumber: e.target.value })}
+                     />
+                   </div>
+                   <div className="space-y-2">
+                     <label className="text-[9px] font-black uppercase tracking-widest text-[var(--muted)]">GCash QR Code</label>
+                     <div className="flex gap-4">
+                       <div 
+                         className="flex-1 py-4 border-2 border-dashed border-[var(--border)] rounded-xl flex flex-col items-center justify-center bg-white hover:bg-blue-50 transition-all cursor-pointer group"
+                         onClick={() => document.getElementById('gcash-qr').click()}
+                       >
+                         <Upload className="w-4 h-4 text-[var(--muted)] mb-1 group-hover:text-[#2D5CC5]" />
+                         <span className="text-[9px] font-bold uppercase tracking-widest">Upload QR</span>
+                         <input id="gcash-qr" type="file" accept="image/*" className="hidden" onChange={(e) => {
+                           const file = e.target.files[0];
+                           if (file) {
+                             setGcashQrFile(file);
+                             setGcashQrPreview(URL.createObjectURL(file));
+                           }
+                         }} />
+                       </div>
+                       {gcashQrPreview && (
+                         <div className="w-16 h-16 rounded-xl overflow-hidden border border-[var(--border)] shadow-sm relative group">
+                           <img src={gcashQrPreview} alt="GCash QR" className="w-full h-full object-cover" />
+                           <button onClick={() => { setGcashQrFile(null); setGcashQrPreview(null); }} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                             <X className="w-4 h-4 text-white" />
+                           </button>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 </div>
+ 
+                 {/* Maya */}
+                 <div className="space-y-4 p-4 border border-[var(--border)] rounded-2xl bg-[var(--input-bg)]/30">
+                   <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#00E06D]">
+                     <div className="flex items-center gap-2">
+                       <div className="w-2 h-2 rounded-full bg-[#00E06D]" /> Maya Method
+                     </div>
+                     <label className="flex items-center gap-2 cursor-pointer group">
+                       <span className="text-[9px] font-bold text-[var(--muted)] group-hover:text-[#00E06D] transition-colors">{formData.allowMaya ? 'AVAILABLE' : 'DISABLED'}</span>
+                       <input 
+                         type="checkbox" 
+                         className="w-4 h-4 accent-[#00E06D] rounded cursor-pointer"
+                         checked={formData.allowMaya}
+                         onChange={(e) => setFormData({ ...formData, allowMaya: e.target.checked })}
+                       />
+                     </label>
+                   </div>
+                   <div className="space-y-2">
+                     <label className="text-[9px] font-black uppercase tracking-widest text-[var(--muted)]">Maya Number</label>
+                     <input
+                       type="text"
+                       className="w-full px-4 py-3 bg-white border border-[var(--border)] rounded-xl focus:outline-none focus:border-[#00E06D] transition-all text-sm"
+                       placeholder="e.g. 0917 123 4567"
+                       value={formData.mayaNumber}
+                       onChange={(e) => setFormData({ ...formData, mayaNumber: e.target.value })}
+                     />
+                   </div>
+                   <div className="space-y-2">
+                     <label className="text-[9px] font-black uppercase tracking-widest text-[var(--muted)]">Maya QR Code</label>
+                     <div className="flex gap-4">
+                       <div 
+                         className="flex-1 py-4 border-2 border-dashed border-[var(--border)] rounded-xl flex flex-col items-center justify-center bg-white hover:bg-green-50 transition-all cursor-pointer group"
+                         onClick={() => document.getElementById('maya-qr').click()}
+                       >
+                         <Upload className="w-4 h-4 text-[var(--muted)] mb-1 group-hover:text-[#00E06D]" />
+                         <span className="text-[9px] font-bold uppercase tracking-widest">Upload QR</span>
+                         <input id="maya-qr" type="file" accept="image/*" className="hidden" onChange={(e) => {
+                           const file = e.target.files[0];
+                           if (file) {
+                             setMayaQrFile(file);
+                             setMayaQrPreview(URL.createObjectURL(file));
+                           }
+                         }} />
+                       </div>
+                       {mayaQrPreview && (
+                         <div className="w-16 h-16 rounded-xl overflow-hidden border border-[var(--border)] shadow-sm relative group">
+                           <img src={mayaQrPreview} alt="Maya QR" className="w-full h-full object-cover" />
+                           <button onClick={() => { setMayaQrFile(null); setMayaQrPreview(null); }} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                             <X className="w-4 h-4 text-white" />
+                           </button>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             </div>
           </div>
 
           <div className="space-y-8">
@@ -330,6 +485,7 @@ export default function AddProductPage() {
 
                 <div className="relative group">
                   <select
+                      disabled={fetchingCategories}
                     className="w-full px-6 py-4 bg-white border-2 border-[var(--rust)]/60 rounded-2xl focus:outline-none focus:border-[var(--rust)] transition-all font-serif text-lg font-bold text-[var(--charcoal)] appearance-none cursor-pointer shadow-lg shadow-red-900/5 group-hover:border-[var(--rust)]"
                     onChange={(e) => {
                       const val = e.target.value;
@@ -339,10 +495,10 @@ export default function AddProductPage() {
                       e.target.value = ""; // Reset
                     }}
                   >
-                    <option value="">+ Select Category </option>
-                    {categories.map((cat, idx) => (
-                      <option key={idx} value={cat.name} disabled={formData.categories.includes(cat.name)}>
-                        {cat.name}
+                    <option value="">{fetchingCategories ? "Loading categories..." : "+ Select Category"}</option>
+                    {categories.map((categoryName, idx) => (
+                      <option key={idx} value={categoryName} disabled={formData.categories.includes(categoryName)}>
+                        {categoryName}
                       </option>
                     ))}
                   </select>

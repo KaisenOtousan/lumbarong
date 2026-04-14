@@ -1,10 +1,10 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRouter } from "next/navigation";
-import { api, getApiErrorMessage } from "@/lib/api";
+import { useRouter, useSearchParams } from "next/navigation";
+import { api, getApiErrorMessage, clearSession } from "@/lib/api";
 
 const containerVariants = {
   hidden: {},
@@ -36,7 +36,17 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [redirectUrl, setRedirectUrl] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const queryRedirect = searchParams.get("redirect");
+    if (queryRedirect) {
+      setRedirectUrl(queryRedirect);
+      localStorage.setItem("returnUrl", queryRedirect);
+    }
+  }, [searchParams]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -57,19 +67,23 @@ export default function LoginPage() {
     try {
       const response = await api.post("/auth/login", { email, password, });
       const { token, user } = response.data;
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
+      
+      // Store ONLY role-specific keys — never overwrite the generic 'token'/'user'
+      // to prevent cross-tab session collision (other tabs would see the wrong user).
+      const roleKey = user.role || "customer";
+      localStorage.setItem(`${roleKey}_token`, token);
+      localStorage.setItem(`${roleKey}_user`, JSON.stringify(user));
 
-      const returnUrl = localStorage.getItem("returnUrl");
+      const returnUrl = redirectUrl || localStorage.getItem("returnUrl");
       if (returnUrl) {
         localStorage.removeItem("returnUrl");
-        window.location.href = returnUrl;
+        window.location.replace(returnUrl);
         return;
       }
 
-      if (user.role === "admin") window.location.href = "/admin/dashboard";
-      else if (user.role === "seller") window.location.href = "/seller/dashboard";
-      else window.location.href = "/home";
+      if (user.role === "admin") window.location.replace("/admin/dashboard");
+      else if (user.role === "seller") window.location.replace("/seller/dashboard");
+      else window.location.replace("/home");
     } catch (error) {
       setError(getApiErrorMessage(error, "Authentication failed. Check your credentials."));
     } finally {
@@ -98,7 +112,7 @@ export default function LoginPage() {
           background: "white",
           borderRadius: "2.5rem",
           border: "1px solid var(--border, #E5DDD5)",
-          padding: "2.5rem",
+          padding: "2rem",
           boxShadow: "0 20px 60px rgba(60,40,20,0.08)",
         }}
       >
@@ -114,12 +128,12 @@ export default function LoginPage() {
             </button>
             <div>
               <Link href="/" className="inline-block mb-1">
-                <span className="font-serif text-3xl font-black italic tracking-tight"
+                <span className="font-serif text-xl font-black italic tracking-tight"
                   style={{ color: "var(--rust, #C0422A)" }}>
                   LumbaRong
                 </span>
               </Link>
-              <div className="text-[9px] font-bold uppercase tracking-[0.3em]"
+              <div className="text-[11px] font-bold uppercase tracking-[0.3em]"
                 style={{ color: "var(--muted, #8C7B70)" }}>
                 Authentication Portal
               </div>
@@ -145,7 +159,7 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-6" autoComplete="off">
             {/* Email */}
             <motion.div variants={itemVariants} className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-widest ml-5 block"
+              <label className="text-[10px] font-bold uppercase tracking-widest px-5 block"
                 style={{ color: "var(--muted, #8C7B70)" }}>
                 Email Address
               </label>
@@ -162,11 +176,12 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   style={{
-                    paddingLeft: "3.5rem", paddingRight: "1.5rem", paddingTop: "1.125rem", paddingBottom: "1.125rem",
+                    paddingLeft: "3rem", paddingRight: "1.25rem", paddingTop: "0.75rem", paddingBottom: "0.75rem",
                     background: "var(--input-bg, #F9F6F2)",
                     borderRadius: "9999px",
                     border: "1.5px solid transparent",
                     color: "var(--charcoal, #1C1917)",
+                    fontSize: "0.8rem",
                   }}
                   onFocus={(e) => { e.target.style.borderColor = "var(--rust)"; e.target.style.background = "white"; }}
                   onBlur={(e) => { e.target.style.borderColor = "transparent"; e.target.style.background = "var(--input-bg, #F9F6F2)"; }}
@@ -182,7 +197,7 @@ export default function LoginPage() {
                   Password
                 </label>
                 <Link href="/forgot-password"
-                  className="text-[9px] font-bold uppercase tracking-widest hover:opacity-70 transition-opacity"
+                  className="text-[10px] font-bold uppercase tracking-widest hover:opacity-70 transition-opacity"
                   style={{ color: "var(--rust, #C0422A)" }}>
                   Forgot Password?
                 </Link>
@@ -200,11 +215,12 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   style={{
-                    paddingLeft: "3.5rem", paddingRight: "3.5rem", paddingTop: "1.125rem", paddingBottom: "1.125rem",
+                    paddingLeft: "3rem", paddingRight: "3rem", paddingTop: "0.75rem", paddingBottom: "0.75rem",
                     background: "var(--input-bg, #F9F6F2)",
                     borderRadius: "9999px",
                     border: "1.5px solid transparent",
                     color: "var(--charcoal, #1C1917)",
+                    fontSize: "0.8rem",
                   }}
                   onFocus={(e) => { e.target.style.borderColor = "var(--rust)"; e.target.style.background = "white"; }}
                   onBlur={(e) => { e.target.style.borderColor = "transparent"; e.target.style.background = "var(--input-bg, #F9F6F2)"; }}
@@ -243,10 +259,10 @@ export default function LoginPage() {
                 transition={{ type: "spring", stiffness: 400, damping: 20 }}
                 className="w-full text-white text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-3 mt-4 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  padding: "1.125rem",
+                  padding: "0.875rem",
                   borderRadius: "9999px",
                   background: "var(--bark, #3D2B1F)",
-                  boxShadow: "0 8px 24px rgba(60,43,31,0.18)",
+                  boxShadow: "0 6px 20px rgba(60,43,31,0.18)",
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = "var(--rust, #C0422A)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bark, #3D2B1F)"; }}

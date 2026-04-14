@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../config/app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/message_badge_provider.dart';
 import '../../providers/notification_provider.dart';
 
 /// A mobile-first BottomNavigationBar that adapts to user role.
@@ -20,6 +21,9 @@ class AppBottomNav extends StatelessWidget {
 
     if (role == 'customer') {
       final cartCount = context.watch<CartProvider>().cartCount;
+      final messageBadge = context.watch<MessageBadgeProvider?>();
+      messageBadge?.ensureLoaded();
+      final unreadMessages = messageBadge?.unreadConversationCount ?? 0;
       return BottomNavigationBar(
         currentIndex: currentIndex,
         type: BottomNavigationBarType.fixed,
@@ -66,9 +70,17 @@ class AppBottomNav extends StatelessWidget {
             ),
             label: 'Cart',
           ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
-            activeIcon: Icon(Icons.chat_bubble),
+          BottomNavigationBarItem(
+            icon: Badge(
+              label: Text(unreadMessages > 9 ? '9+' : '$unreadMessages'),
+              isLabelVisible: unreadMessages > 0,
+              child: const Icon(Icons.chat_bubble_outline),
+            ),
+            activeIcon: Badge(
+              label: Text(unreadMessages > 9 ? '9+' : '$unreadMessages'),
+              isLabelVisible: unreadMessages > 0,
+              child: const Icon(Icons.chat_bubble),
+            ),
             label: 'Messages',
           ),
           const BottomNavigationBarItem(
@@ -81,6 +93,9 @@ class AppBottomNav extends StatelessWidget {
     }
 
     if (role == 'seller') {
+      final messageBadge = context.watch<MessageBadgeProvider?>();
+      messageBadge?.ensureLoaded();
+      final unreadMessages = messageBadge?.unreadConversationCount ?? 0;
       return BottomNavigationBar(
         currentIndex: currentIndex,
         type: BottomNavigationBarType.fixed,
@@ -103,7 +118,7 @@ class AppBottomNav extends StatelessWidget {
               break;
           }
         },
-        items: const [
+        items: [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_outlined),
             activeIcon: Icon(Icons.dashboard),
@@ -120,8 +135,16 @@ class AppBottomNav extends StatelessWidget {
             label: 'Inventory',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
-            activeIcon: Icon(Icons.chat_bubble),
+            icon: Badge(
+              label: Text(unreadMessages > 9 ? '9+' : '$unreadMessages'),
+              isLabelVisible: unreadMessages > 0,
+              child: const Icon(Icons.chat_bubble_outline),
+            ),
+            activeIcon: Badge(
+              label: Text(unreadMessages > 9 ? '9+' : '$unreadMessages'),
+              isLabelVisible: unreadMessages > 0,
+              child: const Icon(Icons.chat_bubble),
+            ),
             label: 'Messages',
           ),
           BottomNavigationBarItem(
@@ -143,13 +166,16 @@ class AppBottomNav extends StatelessWidget {
               context.go('/admin/dashboard');
               break;
             case 1:
-              context.push('/admin/sellers');
+              context.push('/admin/activity');
               break;
             case 2:
-              context.push('/admin/products');
+              context.push('/admin/users');
               break;
             case 3:
-              context.push('/profile');
+              context.push('/admin/sellers');
+              break;
+            case 4:
+              context.push('/admin/products');
               break;
           }
         },
@@ -160,19 +186,24 @@ class AppBottomNav extends StatelessWidget {
             label: 'Dashboard',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline),
-            activeIcon: Icon(Icons.people),
+            icon: Icon(Icons.timeline_outlined),
+            activeIcon: Icon(Icons.timeline),
+            label: 'Activity',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.groups_outlined),
+            activeIcon: Icon(Icons.groups),
+            label: 'Users',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.store_outlined),
+            activeIcon: Icon(Icons.store),
             label: 'Sellers',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.inventory_outlined),
             activeIcon: Icon(Icons.inventory),
             label: 'Products',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
           ),
         ],
       );
@@ -195,6 +226,7 @@ class LumBarongAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final isAdmin = auth.isLoggedIn && auth.user?.role == 'admin';
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
@@ -231,52 +263,76 @@ class LumBarongAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: [
         if (auth.isLoggedIn) ...[
           // ─── Notification Bell ───────────────────────────────────────
-          Builder(builder: (ctx) {
-            final notifProvider = ctx.watch<NotificationProvider>();
-            final count = notifProvider.unreadCount;
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.notifications_none_rounded,
-                      size: 22, color: AppTheme.textMuted),
-                  onPressed: () {
-                    notifProvider.fetch();
-                    context.push('/notifications');
-                  },
-                ),
-                if (count > 0)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(
-                        color: AppTheme.rust,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                      child: Text(
-                        count > 9 ? '9+' : '$count',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
+          Builder(
+            builder: (ctx) {
+              final notifProvider = ctx.watch<NotificationProvider>();
+              final count = notifProvider.unreadCount;
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    icon: const Icon(
+                      Icons.notifications_none_rounded,
+                      size: 22,
+                      color: AppTheme.textMuted,
+                    ),
+                    onPressed: () {
+                      notifProvider.fetch();
+                      context.push('/notifications');
+                    },
+                  ),
+                  if (count > 0)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(
+                          color: AppTheme.rust,
+                          shape: BoxShape.circle,
                         ),
-                        textAlign: TextAlign.center,
+                        constraints: const BoxConstraints(
+                          minWidth: 14,
+                          minHeight: 14,
+                        ),
+                        child: Text(
+                          count > 9 ? '9+' : '$count',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
+                ],
+              );
+            },
+          ),
+          // Hide profile shortcut for admin accounts.
+          if (!isAdmin)
+            GestureDetector(
+              onTap: () => context.push('/profile'),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  auth.user!.name.split(' ').first,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textSecondary,
                   ),
-              ],
-            );
-          }),
-          // ─── Username ────────────────────────────────────────────────
-          GestureDetector(
-            onTap: () => context.push('/profile'),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
+                ),
+              ),
+            ),
+          if (isAdmin)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
               child: Text(
-                auth.user!.name.split(' ').first,
+                auth.user?.name.toString().trim().isNotEmpty == true
+                    ? auth.user!.name
+                    : 'Admin',
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -284,7 +340,6 @@ class LumBarongAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               ),
             ),
-          ),
           IconButton(
             icon: const Icon(Icons.logout, size: 20, color: AppTheme.textMuted),
             onPressed: () async {
@@ -367,7 +422,7 @@ class BarongScaffold extends StatelessWidget {
               ),
             ),
           ),
-          
+
           // Main Content
           Positioned.fill(child: child),
         ],
@@ -376,7 +431,10 @@ class BarongScaffold extends StatelessWidget {
   }
 }
 
-void _showNotificationsSheet(BuildContext context, NotificationProvider provider) {
+void _showNotificationsSheet(
+  BuildContext context,
+  NotificationProvider provider,
+) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -422,7 +480,10 @@ void _showNotificationsSheet(BuildContext context, NotificationProvider provider
                         ),
                       IconButton(
                         onPressed: () => Navigator.pop(ctx),
-                        icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                        icon: const Icon(
+                          Icons.close,
+                          color: AppTheme.textMuted,
+                        ),
                       ),
                     ],
                   ),
@@ -434,7 +495,8 @@ void _showNotificationsSheet(BuildContext context, NotificationProvider provider
             Expanded(
               child: Consumer<NotificationProvider>(
                 builder: (context, notifProvider, child) {
-                  if (notifProvider.loading && notifProvider.notifications.isEmpty) {
+                  if (notifProvider.loading &&
+                      notifProvider.notifications.isEmpty) {
                     return const Center(
                       child: CircularProgressIndicator(color: AppTheme.primary),
                     );
@@ -446,12 +508,18 @@ void _showNotificationsSheet(BuildContext context, NotificationProvider provider
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.notifications_off_outlined,
-                              size: 64, color: AppTheme.textMuted.withValues(alpha: 0.5)),
+                          Icon(
+                            Icons.notifications_off_outlined,
+                            size: 64,
+                            color: AppTheme.textMuted.withValues(alpha: 0.5),
+                          ),
                           const SizedBox(height: 16),
                           const Text(
                             'No notifications yet',
-                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 16,
+                            ),
                           ),
                         ],
                       ),
@@ -461,11 +529,12 @@ void _showNotificationsSheet(BuildContext context, NotificationProvider provider
                   return ListView.separated(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: notifs.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1, color: AppTheme.borderLight),
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: AppTheme.borderLight),
                     itemBuilder: (context, index) {
                       final n = notifs[index];
                       final isRead = n['read'] == true;
-                      
+
                       // Format date
                       final dateStr = n['createdAt'] as String?;
                       String timeText = '';
@@ -500,17 +569,24 @@ void _showNotificationsSheet(BuildContext context, NotificationProvider provider
                         },
                         child: Container(
                           padding: const EdgeInsets.all(16),
-                          color: isRead ? Colors.transparent : AppTheme.primary.withValues(alpha: 0.05),
+                          color: isRead
+                              ? Colors.transparent
+                              : AppTheme.primary.withValues(alpha: 0.05),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Container(
                                 width: 8,
                                 height: 8,
-                                margin: const EdgeInsets.only(top: 6, right: 12),
+                                margin: const EdgeInsets.only(
+                                  top: 6,
+                                  right: 12,
+                                ),
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: isRead ? Colors.transparent : AppTheme.primary,
+                                  color: isRead
+                                      ? Colors.transparent
+                                      : AppTheme.primary,
                                 ),
                               ),
                               Expanded(
@@ -520,7 +596,9 @@ void _showNotificationsSheet(BuildContext context, NotificationProvider provider
                                     Text(
                                       n['title'] ?? 'Notification',
                                       style: TextStyle(
-                                        fontWeight: isRead ? FontWeight.w500 : FontWeight.w700,
+                                        fontWeight: isRead
+                                            ? FontWeight.w500
+                                            : FontWeight.w700,
                                         color: AppTheme.charcoal,
                                         fontSize: 16,
                                       ),

@@ -37,43 +37,37 @@ export default function ProductDetailClient() {
   const [userRole, setUserRole] = useState(null);
   const [addedToCart, setAddedToCart] = useState(false);
   const [selectionError, setSelectionError] = useState(false);
-
-  const getPrimaryCategory = (data) => {
-    if (typeof data?.category === "string" && data.category.trim()) {
-      return data.category.trim();
-    }
-
-    if (Array.isArray(data?.categories) && data.categories.length > 0) {
-      return String(data.categories[0]).trim();
-    }
-
-    if (typeof data?.categories === "string" && data.categories.trim()) {
-      const raw = data.categories.trim();
-      if (raw.startsWith("[")) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return String(parsed[0]).trim();
-          }
-        } catch (_) {}
-      }
-      return raw;
-    }
-
-    return "";
-  };
+  const [newRating, setNewRating] = useState(5);
+  const [newComment, setNewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState(null);
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem("user") || "{}");
-      setUserRole(stored.role || "customer");
+      // Priority check for role-specific keys to ensure correct layout wrapping
+      const adminData = JSON.parse(localStorage.getItem("admin_user") || "null");
+      const sellerData = JSON.parse(localStorage.getItem("seller_user") || "null");
+      const customerData = JSON.parse(localStorage.getItem("customer_user") || "null");
+      const legacyData = JSON.parse(localStorage.getItem("user") || "null");
+
+      if (adminData?.role === 'admin') {
+        setUserRole('admin');
+      } else if (sellerData?.role === 'seller') {
+        setUserRole('seller');
+      } else if (customerData?.role === 'customer') {
+        setUserRole('customer');
+      } else if (legacyData?.role) {
+        setUserRole(legacyData.role);
+      } else {
+        setUserRole("customer");
+      }
     } catch (e) {
       setUserRole("customer");
     }
   }, []);
 
   const isRestricted = userRole === "admin";
-  const showActions = userRole !== "admin"; // Admins cannot initiate purchases as they are for management only
+  const showActions = userRole !== "admin"; 
 
   const fetchProduct = useCallback(async () => {
     try {
@@ -106,6 +100,28 @@ export default function ProductDetailClient() {
     }
   }, [id]);
 
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!newComment.trim() || isRestricted) return;
+
+    setSubmittingReview(true);
+    setReviewError(null);
+    try {
+      await api.post(`/products/${id}/reviews`, {
+        rating: newRating,
+        comment: newComment
+      });
+      setNewComment("");
+      setNewRating(5);
+      // Refresh product to show new review
+      fetchProduct();
+    } catch (err) {
+      setReviewError(err.response?.data?.message || "Failed to submit review");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   const { socket } = useSocket();
 
   useEffect(() => {
@@ -135,25 +151,32 @@ export default function ProductDetailClient() {
 
   const handleAddToCart = () => {
     if (!product || userRole === 'admin') return;
+    if ((product.stock || 0) <= 0) return; // Out of stock
     if (!selectedSize) {
       setSelectionError(true);
       return;
     }
     const currentVariation = galleryImages[activeImage]?.variation || "Original";
     const cart = JSON.parse(localStorage.getItem("cart") || "[]");
-    const existing = cart.find(item => item.id === product.id && item.size === selectedSize && item.variation === currentVariation);
-    if (existing) {
-      existing.quantity += quantity;
+    const existingIndex = cart.findIndex(item => item.id === product.id && item.size === selectedSize && item.variation === currentVariation);
+    if (existingIndex >= 0) {
+      const existing = cart[existingIndex];
+      // Cap at available stock
+      const newQty = existing.quantity + quantity;
+      existing.quantity = Math.min(newQty, product.stock || 1);
+      cart.splice(existingIndex, 1);
+      cart.unshift(existing);
     } else {
-      cart.push({
+      cart.unshift({
         id: product.id,
         name: product.name,
         price: `₱${(product.price || 0).toLocaleString()}`,
         image: galleryImages[activeImage]?.url || galleryImages[0]?.url || galleryImages[0],
-        quantity,
+        quantity: Math.min(quantity, product.stock || 1),
         size: selectedSize,
         variation: currentVariation,
-        artisan: product.artisan
+        artisan: product.artisan,
+        stock: product.stock || 0,
       });
     }
     localStorage.setItem("cart", JSON.stringify(cart));
@@ -164,6 +187,7 @@ export default function ProductDetailClient() {
 
   const handleBuyNow = () => {
     if (!product || userRole === 'admin') return;
+    if ((product.stock || 0) <= 0) return; // Out of stock
     if (!selectedSize) {
       setSelectionError(true);
       return;
@@ -176,10 +200,11 @@ export default function ProductDetailClient() {
       name: product.name,
       price: `₱${(product.price || 0).toLocaleString()}`,
       image: galleryImages[activeImage]?.url || galleryImages[0]?.url || galleryImages[0],
-      quantity,
+      quantity: Math.min(quantity, product.stock || 1),
       size: selectedSize,
       variation: currentVariation,
-      artisan: product.artisan
+      artisan: product.artisan,
+      stock: product.stock || 0,
     }));
     router.push("/checkout?mode=buy_now");
   };
@@ -205,7 +230,6 @@ export default function ProductDetailClient() {
 
   const sizeOptions = normalizeProductSizes(product?.sizes);
   const availableSizes = sizeOptions.length > 0 ? sizeOptions : ["S", "M", "L", "XL", "2XL"];
-  const primaryCategory = getPrimaryCategory(product) || "Barong Tagalog";
   // No longer auto-select, must be explicitly picked
   const effectiveSize = selectedSize;
 
@@ -476,6 +500,46 @@ export default function ProductDetailClient() {
         .pd-spec-val { font-family: 'Playfair Display', serif; font-size: 13.5px; color: #1C1209; font-weight: 600; }
         .pd-desc { padding: 0 1.75rem 1.75rem; font-size: 14px; color: #3D2B1F; line-height: 1.78; white-space: pre-wrap; }
         .pd-divider { height: 1px; background: #F0EBE3; margin: 0 1.75rem; }
+
+        /* ── Reviews ── */
+        .pd-reviews { background: #fff; border-radius: 1.25rem; box-shadow: 0 4px 24px rgba(60,35,10,0.07); margin-top: 1.5rem; padding: 1.75rem; }
+        .pd-review-item { padding: 1.25rem 0; border-bottom: 1px solid #F7F3EE; }
+        .pd-review-item:last-child { border-bottom: none; }
+        .pd-review-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+        .pd-reviewer { display: flex; align-items: center; gap: 0.75rem; }
+        .pd-rev-avatar { width: 36px; height: 36px; border-radius: 50%; background: #F7F3EE; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #9c6e30; overflow: hidden; flex-shrink: 0; }
+        .pd-rev-name { font-size: 13px; font-weight: 600; color: #1C1209; }
+        .pd-rev-date { font-size: 11px; color: #9c8876; }
+        .pd-rev-comment { font-size: 13.5px; color: #3D2B1F; line-height: 1.6; margin-top: 0.5rem; }
+        .pd-verified-badge { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #2E7D53; background: #F0FFF5; border: 1px solid #A7D5BB; border-radius: 999px; padding: 0.15rem 0.55rem; margin-top: 0.3rem; }
+
+        /* ── Rating Distribution ── */
+        .pd-dist-wrap { background: #FDF5E8; border: 1px solid #EDD9A3; border-radius: 1rem; padding: 1.25rem 1.5rem; margin-bottom: 1.75rem; display: flex; gap: 2rem; align-items: center; }
+        .pd-dist-score { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; flex-shrink: 0; }
+        .pd-dist-big { font-family: 'Playfair Display', serif; font-size: 3rem; font-weight: 700; color: #7B3A10; line-height: 1; }
+        .pd-dist-stars { display: flex; gap: 2px; color: #C0853A; }
+        .pd-dist-count { font-size: 11px; color: #9c8876; }
+        .pd-dist-bars { flex: 1; display: flex; flex-direction: column; gap: 0.4rem; }
+        .pd-dist-row { display: flex; align-items: center; gap: 0.6rem; }
+        .pd-dist-label { font-size: 11px; color: #9c8876; width: 32px; text-align: right; flex-shrink: 0; }
+        .pd-dist-track { flex: 1; height: 6px; background: #F0EBE3; border-radius: 999px; overflow: hidden; }
+        .pd-dist-fill { height: 100%; border-radius: 999px; background: #C0853A; transition: width 0.6s ease; }
+        .pd-dist-pct { font-size: 10px; color: #9c8876; width: 28px; flex-shrink: 0; }
+
+        .pd-rev-form { background: #FDF5E8; border: 1px solid #EDD9A3; border-radius: 1rem; padding: 1.5rem; margin-bottom: 2rem; }
+        .pd-form-title { font-family: 'Playfair Display', serif; font-size: 16px; font-weight: 700; color: #7B3A10; margin-bottom: 1rem; }
+        .pd-star-picker { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; }
+        .pd-star-btn { background: none; border: none; padding: 0; cursor: pointer; color: #E5DDD5; transition: color 0.2s; }
+        .pd-star-btn.active { color: #C0853A; }
+        .pd-textarea { width: 100%; min-height: 100px; padding: 1rem; border: 1px solid #E5DDD5; border-radius: 0.75rem; outline: none; transition: border 0.2s; font-size: 13.5px; resize: none; margin-bottom: 1rem; }
+        .pd-textarea:focus { border-color: #C0853A; }
+        .pd-submit-rev { background: #C0420A; color: #fff; padding: 0.75rem 1.5rem; border-radius: 0.75rem; border: none; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .pd-submit-rev:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(192,66,10,0.25); }
+        .pd-submit-rev:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pd-no-purchase-note { background: #FFF8EC; border: 1px solid #EDD9A3; border-radius: 0.85rem; padding: 1rem 1.25rem; display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.5rem; }
+        .pd-no-purchase-note-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+        .pd-no-purchase-note-text { font-size: 12px; color: #7B5A30; line-height: 1.5; }
+
       `}</style>
 
       <div className="pd-page">
@@ -515,21 +579,30 @@ export default function ProductDetailClient() {
             {/* Right – Info */}
             <div className="pd-info">
               <div className="pd-eyebrow">
-                <span>{primaryCategory}</span>
+                <span>{product.category || "Barong Tagalog"}</span>
               </div>
               <h1 className="pd-title">{product.name}</h1>
 
               {/* Rating row */}
               <div className="pd-rating-row">
                 <div className="pd-rating-seg">
-                  <span className="pd-score">{product.rating ? Number(product.rating).toFixed(1) : "5.0"}</span>
+                  <span className="pd-score">
+                    {product.reviews?.length > 0 
+                      ? (product.reviews.reduce((acc, r) => acc + r.rating, 0) / product.reviews.length).toFixed(1)
+                      : "5.0"}
+                  </span>
                   <div className="pd-stars">
-                    {[...Array(5)].map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-current" />)}
+                    {[...Array(5)].map((_, i) => (
+                      <Star 
+                        key={i} 
+                        className={`w-3.5 h-3.5 ${i < Math.round(product.reviews?.length > 0 ? (product.reviews.reduce((acc, r) => acc + r.rating, 0) / product.reviews.length) : 5) ? 'fill-current' : 'opacity-20'}`} 
+                      />
+                    ))}
                   </div>
                 </div>
                 <div className="pd-rating-sep" />
                 <div className="pd-rating-seg">
-                  <span className="pd-meta-val">4</span>
+                  <span className="pd-meta-val">{product.reviews?.length || 0}</span>
                   <span className="pd-meta-label">&nbsp;Ratings</span>
                 </div>
                 <div className="pd-rating-sep" />
@@ -620,11 +693,11 @@ export default function ProductDetailClient() {
                       <Minus size={13} />
                     </button>
                     <div className="pd-qty-val">{quantity}</div>
-                    <button className="pd-qty-btn" onClick={() => setQuantity(quantity + 1)}>
+                    <button className="pd-qty-btn" onClick={() => setQuantity(Math.min(product.stock || 1, quantity + 1))} disabled={quantity >= (product.stock || 1)}>
                       <Plus size={13} />
                     </button>
                   </div>
-                  <span className="pd-stock"><span className="pd-stock-val">{product.stock || 197}</span> pieces available</span>
+                  <span className="pd-stock"><span className="pd-stock-val" style={{ color: (product.stock || 0) === 0 ? '#C0422A' : '#C0853A' }}>{product.stock ?? 0}</span> {(product.stock || 0) === 0 ? <span style={{ color: '#C0422A', fontWeight: 700 }}>Out of Stock</span> : 'pieces available'}</span>
                 </div>
               </div>
 
@@ -639,13 +712,20 @@ export default function ProductDetailClient() {
                   <div className="pd-actions">
                     <button
                       onClick={handleAddToCart}
+                      disabled={(product.stock || 0) <= 0}
                       className={`pd-btn-cart ${addedToCart ? 'success' : ''}`}
+                      style={(product.stock || 0) <= 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                     >
                       <ShoppingCart size={17} />
-                      {addedToCart ? "Added!" : "Add to Cart"}
+                      {addedToCart ? "Added!" : (product.stock || 0) <= 0 ? "Out of Stock" : "Add to Cart"}
                     </button>
-                    <button onClick={handleBuyNow} className="pd-btn-buy">
-                      Buy Now
+                    <button
+                      onClick={handleBuyNow}
+                      disabled={(product.stock || 0) <= 0}
+                      className="pd-btn-buy"
+                      style={(product.stock || 0) <= 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                    >
+                      {(product.stock || 0) <= 0 ? "Unavailable" : "Buy Now"}
                     </button>
                   </div>
                 </div>
@@ -704,7 +784,7 @@ export default function ProductDetailClient() {
             <div className="pd-specs">
               <div className="pd-spec-row">
                 <span className="pd-spec-key">Category</span>
-                <span className="pd-spec-val">{primaryCategory}</span>
+                <span className="pd-spec-val">{product.category || "Barong Tagalog"}</span>
               </div>
               <div className="pd-spec-row">
                 <span className="pd-spec-key">Stock</span>
@@ -726,6 +806,100 @@ export default function ProductDetailClient() {
             </div>
             <div className="pd-desc">{product.description || product.name}</div>
           </div>
+
+          {/* ───── Reviews Section ───── */}
+          <div className="pd-reviews">
+            <div className="flex items-center gap-3 mb-6">
+              <Star className="w-5 h-5 text-[var(--rust)] fill-current" />
+              <h2 className="font-serif text-xl font-bold text-[var(--charcoal)]">Customer Feedback</h2>
+              <span className="ml-auto text-[11px] font-bold uppercase tracking-widest" style={{ color: '#9c8876' }}>
+                {product.reviews?.length || 0} Reviews
+              </span>
+            </div>
+
+            {/* ── Star Distribution Summary ── */}
+            {product.reviews?.length > 0 && (() => {
+              const reviews = product.reviews;
+              const total = reviews.length;
+              const avg = (reviews.reduce((a, r) => a + r.rating, 0) / total);
+              const dist = [5, 4, 3, 2, 1].map(star => ({
+                star,
+                count: reviews.filter(r => r.rating === star).length,
+                pct: Math.round((reviews.filter(r => r.rating === star).length / total) * 100)
+              }));
+              return (
+                <div className="pd-dist-wrap">
+                  <div className="pd-dist-score">
+                    <span className="pd-dist-big">{avg.toFixed(1)}</span>
+                    <div className="pd-dist-stars">
+                      {[...Array(5)].map((_, i) => (
+                        <Star key={i} className={`w-3.5 h-3.5 ${i < Math.round(avg) ? 'fill-current' : 'opacity-20'}`} />
+                      ))}
+                    </div>
+                    <span className="pd-dist-count">{total} ratings</span>
+                  </div>
+                  <div className="pd-dist-bars">
+                    {dist.map(({ star, count, pct }) => (
+                      <div key={star} className="pd-dist-row">
+                        <span className="pd-dist-label">{star} ★</span>
+                        <div className="pd-dist-track">
+                          <div className="pd-dist-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="pd-dist-pct">{pct}%</span>
+                        <span style={{ fontSize: '10px', color: '#9c8876', width: '24px' }}>({count})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+
+
+
+            {/* Review List */}
+            <div className="space-y-4">
+              {product.reviews?.length > 0 ? (
+                product.reviews.map((rev) => (
+                  <div key={rev.id} className="pd-review-item">
+                    <div className="pd-review-header">
+                      <div className="pd-reviewer">
+                        <div className="pd-rev-avatar">
+                          {rev.customer?.profilePhoto ? (
+                            <img src={rev.customer.profilePhoto} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            (rev.customer?.name || "C")[0].toUpperCase()
+                          )}
+                        </div>
+                        <div>
+                          <div className="pd-rev-name">{rev.customer?.name || "Anonymous"}</div>
+                          <div className="pd-stars" style={{ color: '#C0853A', marginTop: '2px' }}>
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} className={`w-2.5 h-2.5 ${i < rev.rating ? 'fill-current' : 'opacity-20'}`} />
+                            ))}
+                          </div>
+                          {rev.orderId && (
+                            <span className="pd-verified-badge">
+                              <ShieldCheck size={9} /> Verified Purchase
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="pd-rev-date">
+                        {new Date(rev.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    </div>
+                    <p className="pd-rev-comment">{rev.comment}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="py-12 text-center text-[var(--muted)] opacity-50 italic text-sm">
+                  No reviews yet. Be the first to share your experience!
+                </div>
+              )}
+            </div>
+          </div>
+
 
         </div>
       </div>

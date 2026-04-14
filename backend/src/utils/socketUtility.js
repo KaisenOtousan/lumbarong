@@ -79,13 +79,6 @@ const emitToUser = (userId, event, data) => {
   emit(event, data, `user_${userId}`);
 };
 
-const isUserOnline = (userId) => {
-  if (!io || !userId) return false;
-  const roomName = `user_${userId}`;
-  const room = io.sockets.adapter.rooms.get(roomName);
-  return !!room && room.size > 0;
-};
-
 const emitNotificationReceived = (notification) => {
   emitToUser(notification.userId, 'new_notification', notification);
 };
@@ -121,6 +114,10 @@ const emitDashboardUpdate = () => {
   emit('dashboard_update', { timestamp: new Date() });
 };
 
+const emitStatsUpdate = (metadata = {}) => {
+  emit('stats_update', { timestamp: new Date(), ...metadata });
+};
+
 const broadcast = (message, title = 'System Broadcast') => {
   emit('broadcast_message', { 
     title, 
@@ -134,7 +131,6 @@ module.exports = {
   init,
   emit,
   emitToUser,
-  isUserOnline,
   emitNotificationReceived,
   emitNotificationCountUpdated,
   emitInventoryUpdated,
@@ -142,6 +138,7 @@ module.exports = {
   emitOrderUpdated,
   emitUserUpdated,
   emitDashboardUpdate,
+  emitStatsUpdate,
   broadcast,
   SOCKET_EVENTS,
   configureSocketServer

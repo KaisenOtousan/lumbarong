@@ -10,7 +10,6 @@ const {
 
 const ORDER_STATUSES = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Completed', 'Cancelled'];
 const CANCELABLE_ORDER_STATUSES = ['processing', 'to ship', 'pending'];
-const LOW_STOCK_THRESHOLD = 5;
 
 const normalizeOrderStatus = (status) => String(status || '').trim().toLowerCase();
 
@@ -69,15 +68,7 @@ exports.createOrder = async (req, res) => {
   let committed = false;
 
   try {
-    let {
-      items,
-      shippingAddress,
-      addressId,
-      paymentMethod,
-      paymentReference,
-      referenceNumber,
-      paymentProof,
-    } = req.body;
+    let { items, shippingAddress, addressId, paymentMethod, paymentReference, paymentProof } = req.body;
     const customerId = req.user.id;
     const userRole = req.user.role;
     const userStatus = req.user.status;
@@ -119,17 +110,13 @@ exports.createOrder = async (req, res) => {
       throw createHttpError(400, 'Order items are required');
     }
 
-    if (paymentMethod === 'COD') {
-      paymentMethod = 'Cash on Delivery';
-    }
-
-    const validPaymentMethods = ['GCash', 'Cash on Delivery', 'Maya', 'Bank Transfer'];
+    const validPaymentMethods = ['GCash', 'Maya'];
     if (!validPaymentMethods.includes(paymentMethod)) {
-      throw createHttpError(400, 'Invalid payment method selected');
+      throw createHttpError(400, 'Invalid payment method selected. Only GCash and Maya are supported.');
     }
 
     if (paymentMethod === 'GCash' || paymentMethod === 'Maya') {
-      const refStr = String(paymentReference || referenceNumber || '').trim();
+      const refStr = String(paymentReference || '').trim();
       const refRegex = /^\d{8,16}$/;
       if (!refRegex.test(refStr)) {
         throw createHttpError(400, 'Payment reference number must be between 8 and 16 digits');
@@ -139,7 +126,6 @@ exports.createOrder = async (req, res) => {
 
 
     const preparedItems = [];
-    const lowStockEvents = [];
     let calculatedTotalPrice = 0;
     let sellerId = null;
 
@@ -202,18 +188,8 @@ exports.createOrder = async (req, res) => {
     );
 
     for (const item of preparedItems) {
-      const previousStock = Number(item.product.stock) || 0;
       item.product.stock -= item.quantity;
       await item.product.save({ transaction });
-      const nextStock = Number(item.product.stock) || 0;
-
-      if (previousStock > LOW_STOCK_THRESHOLD && nextStock <= LOW_STOCK_THRESHOLD) {
-        lowStockEvents.push({
-          sellerId: item.product.sellerId,
-          productName: item.product.name,
-          remainingStock: nextStock,
-        });
-      }
 
       await OrderItem.create(
         {
@@ -251,23 +227,16 @@ exports.createOrder = async (req, res) => {
         'Order placed',
         'Your order has been placed successfully and is awaiting confirmation.',
         'order',
-        '/orders'
+        '/orders',
+        'customer'
       ),
       sendNotification(
         sellerId,
         'New order received',
         'A customer has placed a new order in your shop.',
         'order',
-        '/seller/orders'
-      ),
-      ...lowStockEvents.map((event) =>
-        sendNotification(
-          event.sellerId,
-          'Low stock alert',
-          `${event.productName} is running low with ${event.remainingStock} units left.`,
-          'inventory',
-          '/seller/inventory'
-        )
+        '/seller/orders',
+        'seller'
       ),
     ]);
 
@@ -327,14 +296,16 @@ exports.cancelOrder = async (req, res) => {
         'Order cancelled',
         'Your order has been cancelled successfully.',
         'order',
-        '/orders'
+        '/orders',
+        'customer'
       ),
       sendNotification(
         order.sellerId,
         'Order cancelled by customer',
         'A customer cancelled an order before shipment.',
         'order',
-        '/seller/orders'
+        '/seller/orders',
+        'seller'
       ),
     ]);
 
@@ -443,7 +414,8 @@ exports.updateOrderStatus = async (req, res) => {
       `Order ${status}`,
       statusMessage,
       'order',
-      '/orders'
+      '/orders',
+      'customer'
     );
 
     res.status(200).json(fullOrder);

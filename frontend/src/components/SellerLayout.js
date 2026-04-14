@@ -13,7 +13,9 @@ import {
   LogOut,
   Menu,
   PlusCircle,
-  X
+  X,
+  CheckCheck,
+  User
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -42,6 +44,7 @@ const mobileNavItems = [
   { label: "Inventory", icon: <Package />, path: "/seller/inventory" },
   { label: "Orders", icon: <ReceiptText />, path: "/seller/orders" },
   { label: "Messages", icon: <MessageCircle />, path: "/seller/messages" },
+  { label: "Profile", icon: <User />, path: "/seller/profile" },
 ];
 
 import { useSocket } from "@/context/SocketContext";
@@ -57,9 +60,10 @@ export default function SellerLayout({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isPopoutOpen, setIsPopoutOpen] = useState(false);
   const { socket } = useSocket();
+  const router = useRouter();
 
   const fetchNotifications = React.useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("seller_token");
     if (!token || token === "null" || token === "undefined") return;
     try {
       const res = await api.get("/notifications");
@@ -76,12 +80,17 @@ export default function SellerLayout({ children }) {
 
   React.useEffect(() => {
     const checkAuth = () => {
-      const storedUser = JSON.parse(localStorage.getItem("user") || "null");
+      // Only use role-specific keys — no generic fallback to prevent cross-tab contamination
+      const storedUser = JSON.parse(localStorage.getItem("seller_user") || "null");
+      const token = localStorage.getItem("seller_token");
+
       setUser(storedUser);
-      
-      // Safety redirect: If not seller or admin, bounce to home
-      if (storedUser && storedUser.role && storedUser.role !== 'seller' && storedUser.role !== 'admin') {
-        window.location.href = "/";
+
+      // If no valid seller session, redirect to login
+      if (!token || !storedUser || (storedUser.role !== 'seller' && storedUser.role !== 'admin')) {
+        if (!window.location.pathname.includes("/login")) {
+          window.location.href = "/login";
+        }
       }
     };
 
@@ -118,8 +127,18 @@ export default function SellerLayout({ children }) {
     }
   };
 
+  const markAllAsRead = async () => {
+    try {
+      await api.put(`/notifications/read-all`);
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error("Failed to mark all notifications as read");
+    }
+  };
+
   const handleLogout = () => {
-    clearSession();
+    clearSession('seller');
     window.location.href = "/";
   };
 
@@ -176,7 +195,7 @@ export default function SellerLayout({ children }) {
               onClick={handleLogout}
               className="flex items-center gap-3 w-full px-4 py-3.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all font-bold text-xs tracking-widest uppercase"
             >
-              <LogOut className="w-4 h-4" /> End Session
+              <LogOut className="w-4 h-4" /> logout
             </button>
           </div>
         </div>
@@ -186,14 +205,14 @@ export default function SellerLayout({ children }) {
       <div className="flex-1 flex flex-col h-full relative overflow-hidden">
         {/* Top Sticky Header */}
         <header className="sticky top-0 z-40 bg-white border-b border-[var(--border)] h-[72px] flex items-center shrink-0">
-          <div className="container mx-auto px-4 lg:px-10 flex items-center justify-between">
+          <div className="fluid-container flex items-center justify-between px-4 lg:px-10">
             <div className="flex items-center gap-4 lg:flex-1">
               {/* Search logic disabled based on UI polish request */}
             </div>
 
             <div className="flex items-center gap-2 md:gap-6">
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setIsPopoutOpen(!isPopoutOpen)}
                   className={`relative w-10 h-10 flex items-center justify-center rounded-xl transition-all ${isPopoutOpen ? 'bg-[var(--rust)] text-white shadow-lg' : 'bg-[var(--cream)] text-[var(--charcoal)] hover:text-[var(--rust)]'}`}
                 >
@@ -209,9 +228,9 @@ export default function SellerLayout({ children }) {
                 <AnimatePresence>
                   {isPopoutOpen && (
                     <>
-                      <motion.div 
-                        initial={{ opacity: 0 }} 
-                        animate={{ opacity: 1 }} 
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => setIsPopoutOpen(false)}
                         className="fixed inset-0 z-40 bg-black/5 backdrop-blur-[2px]"
@@ -222,9 +241,19 @@ export default function SellerLayout({ children }) {
                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                         className="absolute right-0 mt-3 w-80 md:w-96 max-h-[500px] bg-white rounded-2xl shadow-2xl border border-[var(--border)] overflow-hidden z-50 flex flex-col"
                       >
-                        <div className="p-5 border-b border-[var(--border)] flex items-center justify-between bg-stone-50/50">
-                          <h3 className="font-serif font-bold text-[var(--charcoal)]">Artisan Alerts</h3>
-                          <span className="text-[10px] font-black tracking-widest text-[var(--muted)] opacity-50 uppercase">{unreadCount} New</span>
+                        <div className="p-3 lg:p-5 border-b border-[var(--border)] flex items-center justify-between bg-stone-50/50">
+                          <div>
+                            <h3 className="font-serif font-bold text-[var(--charcoal)] leading-tight">Artisan Alerts</h3>
+                            {unreadCount > 0 && <span className="text-[10px] font-black tracking-widest text-[var(--muted)] opacity-50 uppercase">{unreadCount} New</span>}
+                          </div>
+                          {unreadCount > 0 && (
+                            <button
+                              onClick={markAllAsRead}
+                              className="text-[10px] bg-[var(--cream)] border border-[var(--border)] hover:bg-[var(--rust)] hover:text-white transition-all rounded-md px-2 py-1 font-bold text-[var(--charcoal)] tracking-wider flex items-center gap-1"
+                            >
+                              <CheckCheck className="w-3 h-3" /> Mark All Read
+                            </button>
+                          )}
                         </div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
                           {notifications.length === 0 ? (
@@ -237,9 +266,16 @@ export default function SellerLayout({ children }) {
                               {notifications.map((notif) => {
                                 const n = normalizeNotification(notif);
                                 return (
-                                  <div 
-                                    key={notif.id} 
-                                    className={`relative p-4 rounded-xl transition-all group ${!n.read ? 'bg-[var(--cream)]/40 hover:bg-[var(--cream)]/60' : 'hover:bg-stone-50'}`}
+                                  <div
+                                    key={notif.id}
+                                    onClick={() => {
+                                      if (n.link) {
+                                        if (!n.read) markAsRead(notif.id);
+                                        router.push(n.link);
+                                        setIsPopoutOpen(false);
+                                      }
+                                    }}
+                                    className={`relative p-4 rounded-xl transition-all group ${n.link ? 'cursor-pointer' : ''} ${!n.read ? 'bg-[var(--cream)]/40 hover:bg-[var(--cream)]/60' : 'hover:bg-stone-50'}`}
                                   >
                                     {!n.read && <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-[var(--rust)] rounded-full" />}
                                     <div className="pl-3 space-y-1">
@@ -250,20 +286,19 @@ export default function SellerLayout({ children }) {
                                         </div>
                                       </div>
                                       <p className="text-[11px] text-[var(--muted)] leading-relaxed line-clamp-2">{n.message}</p>
-                                      
+
                                       <div className="flex items-center gap-3 pt-2">
                                         {n.link && (
-                                          <Link 
-                                            href={n.link} 
-                                            onClick={() => setIsPopoutOpen(false)}
-                                            className="text-[10px] font-bold text-[var(--rust)] hover:underline flex items-center gap-1"
-                                          >
+                                          <span className="text-[10px] font-bold text-[var(--rust)] group-hover:underline flex items-center gap-1">
                                             View Details <ArrowRight className="w-3 h-3" />
-                                          </Link>
+                                          </span>
                                         )}
                                         {!n.read && (
-                                          <button 
-                                            onClick={() => markAsRead(notif.id)}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              markAsRead(notif.id);
+                                            }}
                                             className="text-[10px] font-bold text-[var(--muted)] hover:text-[var(--rust)] transition-colors ml-auto"
                                           >
                                             Mark as read
@@ -279,12 +314,12 @@ export default function SellerLayout({ children }) {
                         </div>
                         {notifications.length > 0 && (
                           <div className="p-4 bg-stone-50 border-t border-[var(--border)] text-center">
-                             <button 
-                               onClick={() => setIsPopoutOpen(false)}
-                               className="text-[10px] font-bold uppercase tracking-widest text-[var(--muted)] hover:text-[var(--rust)] transition-colors"
-                             >
-                               Close Alerts
-                             </button>
+                            <button
+                              onClick={() => setIsPopoutOpen(false)}
+                              className="text-[10px] font-bold uppercase tracking-widest text-[var(--muted)] hover:text-[var(--rust)] transition-colors"
+                            >
+                              Close Alerts
+                            </button>
                           </div>
                         )}
                       </motion.div>
@@ -302,9 +337,9 @@ export default function SellerLayout({ children }) {
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-[var(--bark)] border-2 border-white shadow-md flex items-center justify-center text-white font-serif text-lg font-bold overflow-hidden transition-transform active:scale-95">
                   {user?.profilePhoto ? (
-                    <img 
-                      src={user.profilePhoto} 
-                      alt={user.name} 
+                    <img
+                      src={user.profilePhoto}
+                      alt={user.name}
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         e.target.onerror = null;
@@ -321,7 +356,7 @@ export default function SellerLayout({ children }) {
         </header>
 
         {/* Scrollable Content */}
-        <main className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar pb-[100px] lg:pb-10">
+        <main className="flex-1 overflow-y-auto fluid-container !pt-10 pb-[100px] lg:pb-10">
           <div className="max-w-[1400px] mx-auto">
             {!isVerified && pathname !== "/seller/profile" && pathname !== "/seller/dashboard" ? (
               <div className="artisan-card p-20 text-center space-y-6 animate-fade-up">

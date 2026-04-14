@@ -2,10 +2,6 @@ const { Message, User, Order, OrderItem, Product } = require('../models');
 const { Op } = require('sequelize');
 const socketUtility = require('../utils/socketUtility');
 
-const AUTO_REPLY_COOLDOWN_MINUTES = 15;
-const SELLER_OFFLINE_AUTO_REPLY =
-    'Thank you for your message. Our artisan shop is currently offline and will reply as soon as possible.';
-
 // Send message
 exports.sendMessage = async (req, res) => {
     try {
@@ -26,48 +22,6 @@ exports.sendMessage = async (req, res) => {
         const populatedMessage = await Message.findByPk(message.id, {
             include: [{ model: User, as: 'sender', attributes: ['id', 'name', 'role', 'profilePhoto'] }]
         });
-
-        // Auto-reply when a customer messages an offline seller.
-        try {
-            const [senderUser, receiverUser] = await Promise.all([
-                User.findByPk(senderId, { attributes: ['id', 'role'] }),
-                User.findByPk(receiverId, { attributes: ['id', 'role'] })
-            ]);
-
-            const isBuyerToSeller =
-                senderUser?.role === 'customer' && receiverUser?.role === 'seller';
-            const sellerOnline = socketUtility.isUserOnline(receiverId);
-
-            if (isBuyerToSeller && !sellerOnline) {
-                const cooldownSince = new Date(Date.now() - AUTO_REPLY_COOLDOWN_MINUTES * 60 * 1000);
-                const recentAutoReply = await Message.findOne({
-                    where: {
-                        senderId: receiverId,
-                        receiverId: senderId,
-                        content: SELLER_OFFLINE_AUTO_REPLY,
-                        createdAt: { [Op.gte]: cooldownSince }
-                    },
-                    order: [['createdAt', 'DESC']]
-                });
-
-                if (!recentAutoReply) {
-                    const autoReply = await Message.create({
-                        senderId: receiverId,
-                        receiverId: senderId,
-                        content: SELLER_OFFLINE_AUTO_REPLY,
-                    });
-
-                    const populatedAutoReply = await Message.findByPk(autoReply.id, {
-                        include: [{ model: User, as: 'sender', attributes: ['id', 'name', 'role', 'profilePhoto'] }]
-                    });
-
-                    socketUtility.emitToUser(senderId, 'receive_message', populatedAutoReply);
-                    socketUtility.emitToUser(receiverId, 'receive_message', populatedAutoReply);
-                }
-            }
-        } catch (autoReplyError) {
-            console.error('Auto-reply generation failed:', autoReplyError);
-        }
 
         // REAL-TIME: Notify Stakeholders
         socketUtility.emitToUser(receiverId, 'receive_message', populatedMessage);
@@ -210,5 +164,51 @@ exports.getConversations = async (req, res) => {
     } catch (error) {
         console.error('Fetch Conversations Error:', error);
         res.status(500).json({ message: 'Error fetching conversations', error: error.message });
+    }
+};
+
+// Manually mark conversation as read
+exports.markAsRead = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { otherUserId } = req.params;
+
+        await Message.update(
+            { read: true },
+            {
+                where: {
+                    senderId: otherUserId,
+                    receiverId: userId,
+                    read: false
+                }
+            }
+        );
+
+        res.json({ message: 'Marked as read' });
+    } catch (error) {
+        console.error('Mark Read Error:', error);
+        res.status(500).json({ message: 'Error marking messages as read' });
+    }
+};
+
+// Delete an entire conversation with a user
+exports.deleteConversation = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { otherUserId } = req.params;
+
+        await Message.destroy({
+            where: {
+                [Op.or]: [
+                    { senderId: userId, receiverId: otherUserId },
+                    { senderId: otherUserId, receiverId: userId }
+                ]
+            }
+        });
+
+        res.json({ message: 'Conversation deleted successfully' });
+    } catch (error) {
+        console.error('Delete Conversation Error:', error);
+        res.status(500).json({ message: 'Error deleting conversation' });
     }
 };

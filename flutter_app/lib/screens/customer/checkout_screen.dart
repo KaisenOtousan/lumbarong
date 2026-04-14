@@ -52,10 +52,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             _phoneController.text =
                 (_selectedAddress!['phone'] ??
                         _selectedAddress!['phoneNumber'] ??
+                        _selectedAddress!['mobileNumber'] ??
                         '')
                     .toString();
             _addressController.text =
-                '${_selectedAddress!['fullName'] ?? _selectedAddress!['recipientName'] ?? ''} | ${_selectedAddress!['street'] ?? ''}, ${_selectedAddress!['barangay'] ?? ''}, ${_selectedAddress!['city'] ?? ''}, ${_selectedAddress!['province'] ?? ''} ${_selectedAddress!['postalCode'] ?? ''}';
+                '${_selectedAddress!['recipientName'] ?? _selectedAddress!['fullName'] ?? _selectedAddress!['name'] ?? ''} | ${_selectedAddress!['street'] ?? ''}, ${_selectedAddress!['barangay'] ?? ''}, ${_selectedAddress!['city'] ?? ''}, ${_selectedAddress!['province'] ?? ''} ${_selectedAddress!['postalCode'] ?? ''}';
           }
         });
       }
@@ -99,9 +100,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     onTap: () {
                       setState(() {
                         _selectedAddress = addr;
-                        _phoneController.text = addr['phoneNumber'] ?? '';
+                        _phoneController.text =
+                            (addr['phone'] ??
+                                    addr['phoneNumber'] ??
+                                    addr['mobileNumber'] ??
+                                    '')
+                                .toString();
                         _addressController.text =
-                            '${addr['fullName']} | ${addr['street']}, ${addr['barangay']}, ${addr['city']}, ${addr['province']} ${addr['postalCode']}';
+                            '${addr['recipientName'] ?? addr['fullName'] ?? addr['name'] ?? ''} | ${addr['street']}, ${addr['barangay']}, ${addr['city']}, ${addr['province']} ${addr['postalCode']}';
                       });
                       Navigator.pop(context);
                     },
@@ -135,7 +141,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  addr['fullName'] ?? 'Address',
+                                  (addr['recipientName'] ??
+                                          addr['fullName'] ??
+                                          addr['name'] ??
+                                          'Address')
+                                      .toString(),
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 14,
@@ -236,9 +246,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     setState(() => _isOrdering = true);
     try {
-      final normalizedPaymentMethod = _paymentMethod == 'COD'
-          ? 'Cash on Delivery'
-          : _paymentMethod;
+      final normalizedPaymentMethod = _paymentMethod;
 
       final orderData = {
         'items': itemsToBuy
@@ -276,10 +284,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 'longitude': _selectedAddress!['longitude'],
               }
             : '${_addressController.text.trim()} | Contact: ${_phoneController.text.trim()}',
-        'paymentReference': _paymentMethod == 'GCash'
+        'paymentReference':
+            (_paymentMethod == 'GCash' || _paymentMethod == 'Maya')
             ? _referenceController.text.trim()
             : null,
-        'receiptImage': _paymentMethod == 'GCash' ? _receiptImageUrl : null,
+        'receiptImage': (_paymentMethod == 'GCash' || _paymentMethod == 'Maya')
+            ? _receiptImageUrl
+            : null,
       };
       await ApiClient().post('/orders', data: orderData);
       if (!mounted) return;
@@ -320,6 +331,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final cart = context.watch<CartProvider>();
+    final selectedItems = cart.selectedItems.isNotEmpty
+        ? cart.selectedItems
+        : cart.items;
+    final seller = selectedItems.isNotEmpty
+        ? selectedItems.first.product.seller
+        : null;
     if (!auth.isLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) context.go('/');
@@ -528,68 +545,84 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   RadioListTile<String>(
                     activeColor: AppTheme.primary,
                     title: const Text(
-                      'Cash on Delivery',
+                      'Maya',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: const Text(
-                      'Pay when you receive',
+                      'Digital wallet transfer',
                       style: TextStyle(fontSize: 12),
                     ),
-                    value: 'Cash on Delivery',
+                    value: 'Maya',
                     groupValue: _paymentMethod,
                     onChanged: (v) => setState(() => _paymentMethod = v!),
                   ),
                 ],
               ),
             ),
-            if (_paymentMethod == 'GCash') ...[
+            if (_paymentMethod == 'GCash' || _paymentMethod == 'Maya') ...[
               const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: _paymentMethod == 'GCash'
+                      ? const Color(0xFFEFF6FF)
+                      : const Color(0xFFF0FDF4),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                  border: Border.all(
+                    color: _paymentMethod == 'GCash'
+                        ? const Color(0xFFBFDBFE)
+                        : const Color(0xFFBBF7D0),
+                  ),
                 ),
-                child: const Column(
+                child: Column(
                   children: [
                     Text(
-                      'GCASH PAYMENT DETAILS',
+                      '${_paymentMethod.toUpperCase()} PAYMENT DETAILS',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.5,
-                        color: Color(0xFF1E40AF),
+                        color: _paymentMethod == 'GCash'
+                            ? const Color(0xFF1E40AF)
+                            : const Color(0xFF15803D),
                       ),
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     Text(
-                      '0954 172 7787',
+                      _paymentMethod == 'GCash'
+                          ? (seller?.gcashNumber ?? '0954 172 7787')
+                          : (seller?.mayaNumber ?? '0954 172 7787'),
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF1E3A8A),
+                        color: _paymentMethod == 'GCash'
+                            ? const Color(0xFF1E3A8A)
+                            : const Color(0xFF166534),
                       ),
                     ),
                     Text(
-                      'Aldrin C.',
+                      seller?.name ?? 'LumbaRong Artisan',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF3B82F6),
+                        color: _paymentMethod == 'GCash'
+                            ? const Color(0xFF3B82F6)
+                            : const Color(0xFF22C55E),
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
-              const _SectionLabel(text: 'GCASH VERIFICATION'),
+              _SectionLabel(
+                text: '${_paymentMethod.toUpperCase()} VERIFICATION',
+              ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _referenceController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Reference Number',
-                  prefixIcon: Icon(Icons.numbers_rounded),
+                  prefixIcon: const Icon(Icons.numbers_rounded),
                 ),
               ),
               const SizedBox(height: 16),

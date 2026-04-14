@@ -55,12 +55,68 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  mayaNumber: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  mayaQrCode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   facebookLink: {
     type: DataTypes.STRING,
     allowNull: true,
   },
   instagramLink: {
     type: DataTypes.STRING,
+    allowNull: true,
+  },
+  tiktokLink: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  youtubeLink: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  socialLinks: {
+    type: DataTypes.JSON,
+    defaultValue: [],
+  },
+  shopHouseNo: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  shopStreet: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  shopAddress: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  shopBarangay: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  shopCity: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  shopProvince: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  shopPostalCode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  shopLatitude: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+  shopLongitude: {
+    type: DataTypes.FLOAT,
     allowNull: true,
   },
   isAdult: {

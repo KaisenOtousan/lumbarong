@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Camera as CapCamera, CameraResultType } from "@capacitor/camera";
 import { Capacitor } from "@capacitor/core";
+import { fetchCategories, normalizeCategories } from "@/lib/categories";
 
 export default function EditProductClient() {
   const searchParams = useSearchParams();
@@ -24,28 +25,33 @@ export default function EditProductClient() {
     stock: "",
     shippingFee: "",
     shippingDays: "",
+    gcashNumber: "",
+    mayaNumber: "",
+    gcashQrCode: "",
+    mayaQrCode: "",
+    allowGcash: true,
+    allowMaya: true,
     images: [], // Existing images {url, variation}
     variations: [] // New format if any
   });
+  const [gcashQrFile, setGcashQrFile] = useState(null);
+  const [mayaQrFile, setMayaQrFile] = useState(null);
+  const [gcashQrPreview, setGcashQrPreview] = useState(null);
+  const [mayaQrPreview, setMayaQrPreview] = useState(null);
 
   const [newVariations, setNewVariations] = useState([]);
   const [categoriesList, setCategoriesList] = useState([]);
 
   useEffect(() => {
-    const fetchCategories = async () => {
+    const loadCategories = async () => {
       try {
-        const res = await api.get("/categories");
-        setCategoriesList(res.data);
+        const data = await fetchCategories();
+        setCategoriesList(normalizeCategories(data));
       } catch (err) {
-        setCategoriesList([
-          { name: "Formal" },
-          { name: "Casual" },
-          { name: "Traditional" },
-          { name: "Modern Elite" }
-        ]);
+        setCategoriesList([]);
       }
     };
-    fetchCategories();
+    loadCategories();
   }, []);
 
   useEffect(() => {
@@ -67,8 +73,16 @@ export default function EditProductClient() {
           stock: p.stock || "",
           shippingFee: p.shippingFee || "",
           shippingDays: p.shippingDays || "",
+          gcashNumber: p.gcashNumber || "",
+          mayaNumber: p.mayaNumber || "",
+          gcashQrCode: p.gcashQrCode || "",
+          mayaQrCode: p.mayaQrCode || "",
+          allowGcash: p.allowGcash !== undefined ? p.allowGcash : true,
+          allowMaya: p.allowMaya !== undefined ? p.allowMaya : true,
           images: Array.isArray(p.image) ? p.image : (p.image ? JSON.parse(p.image) : [])
         });
+        if (p.gcashQrCode) setGcashQrPreview(p.gcashQrCode);
+        if (p.mayaQrCode) setMayaQrPreview(p.mayaQrCode);
       } catch (err) {
         console.error("Failed to fetch product details");
       } finally {
@@ -158,8 +172,45 @@ export default function EditProductClient() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSaving(true);
+    if (Number(formData.price) <= 0 || Number(formData.price) > 10000) {
+      alert("Price must be between 1 and 10,000 PHP.");
+      setSaving(false);
+      return;
+    }
+    if (Number(formData.stock) < 0 || Number(formData.stock) > 500) {
+      alert("Stock quantity must be between 0 and 500 units.");
+      setSaving(false);
+      return;
+    }
+    if (formData.shippingFee && (Number(formData.shippingFee) < 0 || Number(formData.shippingFee) > 500)) {
+      alert("Shipping fee cannot exceed 500 PHP.");
+      setSaving(false);
+      return;
+    }
+    if (formData.shippingDays && (Number(formData.shippingDays) < 1 || Number(formData.shippingDays) > 30)) {
+      alert("Shipping days must be between 1 and 30 days.");
+      setSaving(false);
+      return;
+    }
+
+      setSaving(true);
     try {
+      let gcashQrUrl = formData.gcashQrCode;
+      let mayaQrUrl = formData.mayaQrCode;
+
+      if (gcashQrFile) {
+        const gFormData = new FormData();
+        gFormData.append('image', gcashQrFile);
+        const gRes = await api.post('/upload', gFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        gcashQrUrl = gRes.data.url;
+      }
+      if (mayaQrFile) {
+        const mFormData = new FormData();
+        mFormData.append('image', mayaQrFile);
+        const mRes = await api.post('/upload', mFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        mayaQrUrl = mRes.data.url;
+      }
+
       const form = new FormData();
       form.append("name", formData.name);
       form.append("description", formData.description);
@@ -169,6 +220,12 @@ export default function EditProductClient() {
       form.append("stock", formData.stock);
       form.append("shippingFee", formData.shippingFee || 0);
       form.append("shippingDays", formData.shippingDays || 3);
+      form.append("gcashNumber", formData.gcashNumber);
+      form.append("gcashQrCode", gcashQrUrl);
+      form.append("mayaNumber", formData.mayaNumber);
+      form.append("mayaQrCode", mayaQrUrl);
+      form.append("allowGcash", formData.allowGcash);
+      form.append("allowMaya", formData.allowMaya);
       
       // Keep track of which variations are being added
       const variationNames = newVariations.map(v => v.variation);
@@ -227,11 +284,12 @@ export default function EditProductClient() {
                     <input 
                       type="number" 
                       min="0.01"
+                      max="10000"
                       step="0.01"
                       value={formData.price}
                       onChange={(e) => setFormData({...formData, price: e.target.value})}
                       className="w-full bg-[var(--input-bg)] border-none rounded-2xl p-5 text-sm font-medium focus:ring-2 focus:ring-[var(--rust)]/20 transition-all placeholder:opacity-30"
-                      placeholder="0.00"
+                      placeholder="Max ₱10,000"
                       required
                     />
                 </div>
@@ -259,6 +317,7 @@ export default function EditProductClient() {
 
                   <div className="relative group">
                     <select
+                        disabled={!categoriesList.length}
                       className="w-full px-6 py-4 bg-white border-2 border-[var(--rust)]/60 rounded-2xl focus:outline-none focus:border-[var(--rust)] transition-all font-serif text-lg font-bold text-[var(--charcoal)] appearance-none cursor-pointer shadow-lg shadow-red-900/5 group-hover:border-[var(--rust)]"
                       onChange={(e) => {
                         const val = e.target.value;
@@ -268,10 +327,10 @@ export default function EditProductClient() {
                         e.target.value = ""; // Reset
                       }}
                     >
-                      <option value="">+ Select Category Sector </option>
-                      {categoriesList.map((cat, idx) => (
-                        <option key={idx} value={cat.name} disabled={formData.categories.includes(cat.name)}>
-                          {cat.name}
+                      <option value="">{categoriesList.length ? "+ Select Category Sector" : "Loading categories..."}</option>
+                      {categoriesList.map((categoryName, idx) => (
+                        <option key={idx} value={categoryName} disabled={formData.categories.includes(categoryName)}>
+                          {categoryName}
                         </option>
                       ))}
                     </select>
@@ -306,11 +365,12 @@ export default function EditProductClient() {
                     <input 
                       type="number" 
                       min="0"
+                      max="500"
                       step="1"
                       value={formData.stock}
                       onChange={(e) => setFormData({...formData, stock: e.target.value})}
                       className="w-full bg-[var(--input-bg)] border-none rounded-2xl p-5 text-sm font-medium focus:ring-2 focus:ring-[var(--rust)]/20 transition-all placeholder:opacity-30"
-                      placeholder="Quantity in stock"
+                      placeholder="Max 500"
                     />
                 </div>
                 <div className="space-y-2">
@@ -318,11 +378,12 @@ export default function EditProductClient() {
                     <input 
                       type="number" 
                       min="0"
+                      max="500"
                       step="0.01"
                       value={formData.shippingFee}
                       onChange={(e) => setFormData({...formData, shippingFee: e.target.value})}
                       className="w-full bg-[var(--input-bg)] border-none rounded-2xl p-5 text-sm font-medium focus:ring-2 focus:ring-[var(--rust)]/20 transition-all placeholder:opacity-30"
-                      placeholder="0.00"
+                      placeholder="Max ₱500"
                     />
                 </div>
                 <div className="space-y-2">
@@ -330,11 +391,12 @@ export default function EditProductClient() {
                     <input 
                       type="number" 
                       min="1"
+                      max="30"
                       step="1"
                       value={formData.shippingDays}
                       onChange={(e) => setFormData({...formData, shippingDays: e.target.value})}
                       className="w-full bg-[var(--input-bg)] border-none rounded-2xl p-5 text-sm font-medium focus:ring-2 focus:ring-[var(--rust)]/20 transition-all placeholder:opacity-30"
-                      placeholder="Estimated delivery days"
+                      placeholder="Max 30 days"
                     />
                 </div>
               </div>
@@ -349,6 +411,122 @@ export default function EditProductClient() {
                     placeholder="Describe the craftsmanship and materials of this piece..."
                     required
                   />
+              </div>
+
+              <div className="artisan-card border border-[var(--border)] bg-[var(--cream)]/10 p-8 space-y-6">
+                 <h3 className="text-lg font-bold">Payment Configuration</h3>
+                 <p className="text-[10px] text-[var(--muted)] -mt-4 uppercase tracking-widest leading-relaxed">Optional: Leave blank to use your Seller Profile's global payment details.</p>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   {/* GCash */}
+                   <div className="space-y-4 p-5 border border-[var(--border)] rounded-2xl bg-white shadow-sm">
+                     <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#2D5CC5]">
+                       <div className="flex items-center gap-2">
+                         <div className="w-2.5 h-2.5 rounded-full bg-[#2D5CC5]" /> GCash Method
+                       </div>
+                       <label className="flex items-center gap-2 cursor-pointer group">
+                         <span className="text-[9px] font-bold text-[var(--muted)] group-hover:text-[#2D5CC5] transition-colors">{formData.allowGcash ? 'AVAILABLE' : 'DISABLED'}</span>
+                         <input 
+                           type="checkbox" 
+                           className="w-4 h-4 accent-[#2D5CC5] rounded cursor-pointer"
+                           checked={formData.allowGcash}
+                           onChange={(e) => setFormData({ ...formData, allowGcash: e.target.checked })}
+                         />
+                       </label>
+                     </div>
+                     <div className="space-y-2">
+                       <label className="text-[9px] font-black uppercase tracking-widest text-[var(--muted)]">GCash Number</label>
+                       <input
+                         type="text"
+                         className="w-full px-4 py-3 bg-[var(--input-bg)] border border-[var(--border)] rounded-xl focus:outline-none focus:border-[#2D5CC5] transition-all text-sm font-medium"
+                         placeholder="e.g. 0917 123 4567"
+                         value={formData.gcashNumber}
+                         onChange={(e) => setFormData({ ...formData, gcashNumber: e.target.value })}
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <label className="text-[9px] font-black uppercase tracking-widest text-[var(--muted)]">GCash QR Code</label>
+                       <div className="flex gap-4">
+                         <div 
+                           className="flex-1 py-4 border-2 border-dashed border-[var(--border)] rounded-xl flex flex-col items-center justify-center bg-[var(--input-bg)]/30 hover:bg-blue-50 transition-all cursor-pointer group"
+                           onClick={() => document.getElementById('gcash-qr-edit').click()}
+                         >
+                           <Upload className="w-5 h-5 text-[var(--muted)] mb-1 group-hover:text-[#2D5CC5]" />
+                           <span className="text-[9px] font-bold uppercase tracking-widest">Update QR</span>
+                           <input id="gcash-qr-edit" type="file" accept="image/*" className="hidden" onChange={(e) => {
+                             const file = e.target.files[0];
+                             if (file) {
+                               setGcashQrFile(file);
+                               setGcashQrPreview(URL.createObjectURL(file));
+                             }
+                           }} />
+                         </div>
+                         {gcashQrPreview && (
+                           <div className="w-20 h-20 rounded-xl overflow-hidden border border-[var(--border)] shadow-md relative group">
+                             <img src={gcashQrPreview} alt="GCash QR" className="w-full h-full object-cover" />
+                             <button onClick={() => { setGcashQrFile(null); setGcashQrPreview(formData.gcashQrCode); }} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                               <X className="w-5 h-5 text-white" />
+                             </button>
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   </div>
+   
+                   {/* Maya */}
+                   <div className="space-y-4 p-5 border border-[var(--border)] rounded-2xl bg-white shadow-sm">
+                     <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#00E06D]">
+                       <div className="flex items-center gap-2">
+                         <div className="w-2.5 h-2.5 rounded-full bg-[#00E06D]" /> Maya Method
+                       </div>
+                       <label className="flex items-center gap-2 cursor-pointer group">
+                         <span className="text-[9px] font-bold text-[var(--muted)] group-hover:text-[#00E06D] transition-colors">{formData.allowMaya ? 'AVAILABLE' : 'DISABLED'}</span>
+                         <input 
+                           type="checkbox" 
+                           className="w-4 h-4 accent-[#00E06D] rounded cursor-pointer"
+                           checked={formData.allowMaya}
+                           onChange={(e) => setFormData({ ...formData, allowMaya: e.target.checked })}
+                         />
+                       </label>
+                     </div>
+                     <div className="space-y-2">
+                       <label className="text-[9px] font-black uppercase tracking-widest text-[var(--muted)]">Maya Number</label>
+                       <input
+                         type="text"
+                         className="w-full px-4 py-3 bg-var(--input-bg) border border-(var--border) rounded-xl focus:outline-none focus:border-[#00E06D] transition-all text-sm font-medium"
+                         placeholder="e.g. 0917 123 4567"
+                         value={formData.mayaNumber}
+                         onChange={(e) => setFormData({ ...formData, mayaNumber: e.target.value })}
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <label className="text-[9px] font-black uppercase tracking-widest text-[var(--muted)]">Maya QR Code</label>
+                       <div className="flex gap-4">
+                         <div 
+                           className="flex-1 py-4 border-2 border-dashed border-[var(--border)] rounded-xl flex flex-col items-center justify-center bg-[var(--input-bg)]/30 hover:bg-green-50 transition-all cursor-pointer group"
+                           onClick={() => document.getElementById('maya-qr-edit').click()}
+                         >
+                           <Upload className="w-5 h-5 text-[var(--muted)] mb-1 group-hover:text-[#00E06D]" />
+                           <span className="text-[9px] font-bold uppercase tracking-widest">Update QR</span>
+                           <input id="maya-qr-edit" type="file" accept="image/*" className="hidden" onChange={(e) => {
+                             const file = e.target.files[0];
+                             if (file) {
+                               setMayaQrFile(file);
+                               setMayaQrPreview(URL.createObjectURL(file));
+                             }
+                           }} />
+                         </div>
+                         {mayaQrPreview && (
+                           <div className="w-20 h-20 rounded-xl overflow-hidden border border-[var(--border)] shadow-md relative group">
+                             <img src={mayaQrPreview} alt="Maya QR" className="w-full h-full object-cover" />
+                             <button onClick={() => { setMayaQrFile(null); setMayaQrPreview(formData.mayaQrCode); }} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                               <X className="w-5 h-5 text-white" />
+                             </button>
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   </div>
+                 </div>
               </div>
 
               {formData.images && formData.images.length > 0 && (

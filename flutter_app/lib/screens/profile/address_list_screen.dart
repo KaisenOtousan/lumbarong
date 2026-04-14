@@ -38,8 +38,26 @@ class _AddressListScreenState extends State<AddressListScreen> {
 
   Future<void> _setDefault(dynamic id) async {
     try {
-      await ApiClient().patch('/users/addresses/$id/default');
-      _loadAddresses();
+      await ApiClient().patch('/users/addresses/$id/set-default');
+      if (mounted) {
+        await _loadAddresses();
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text(
+              'Default Address Set',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            content: const Text('This address is now your default address.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -282,7 +300,11 @@ class _AddressCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  address['fullName'] ?? '',
+                  (address['recipientName'] ??
+                          address['fullName'] ??
+                          address['name'] ??
+                          '')
+                      .toString(),
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -291,7 +313,11 @@ class _AddressCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  address['phoneNumber'] ?? '',
+                  (address['phone'] ??
+                          address['phoneNumber'] ??
+                          address['mobileNumber'] ??
+                          '')
+                      .toString(),
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textSecondary,

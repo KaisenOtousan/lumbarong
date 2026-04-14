@@ -9,7 +9,9 @@
     "dev": "nodemon src/server.js",
     "dev:watch": "node --watch src/server.js",
     "seed": "node scripts/seed.js",
-    "import-db": "node scripts/import-db.js"
+    "import-db": "node scripts/import-db.js",
+    "migrate:product-images": "node scripts/migrate-product-images.js",
+    "repair:product-images": "node scripts/repair-missing-product-images.js"
   },
   "keywords": [],
   "author": "",
@@ -31,7 +33,8 @@
     "multer-storage-cloudinary": "^4.0.0",
     "mysql2": "^3.20.0",
     "sequelize": "^6.37.8",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "jest": "^30.3.0",

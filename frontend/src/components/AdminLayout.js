@@ -40,16 +40,13 @@ const sidebarData = [
   { group: "PRODUCT CONTROL", items: [
     { label: "All Products", icon: <ShoppingBag className="w-5 h-5" />, path: "/admin/products" },
   ]},
-  { group: "APP SETTINGS", items: [
-    { label: "Sales Goals", icon: <Settings className="w-5 h-5" />, path: "/admin/settings" },
-  ]},
+  { group: "APP SETTINGS", items: [] },
 ];
 
 const mobileNavItems = [
   { label: "Dashboard", icon: <BarChart3 />, path: "/admin/dashboard" },
   { label: "Customers", icon: <Users />, path: "/admin/users" },
   { label: "Products", icon: <ShoppingBag />, path: "/admin/products" },
-  { label: "Settings", icon: <Settings />, path: "/admin/settings" },
 ];
 
 import MobileBottomNav from "./MobileBottomNav";
@@ -61,14 +58,12 @@ export default function AdminLayout({ children }) {
 
   React.useEffect(() => {
     const checkAuth = () => {
-      const storedUser = JSON.parse(localStorage.getItem("user") || "null");
-      const token = localStorage.getItem("token");
+      // Only use role-specific keys — no generic fallback to prevent cross-tab contamination
+      const storedUser = JSON.parse(localStorage.getItem("admin_user") || "null");
+      const token = localStorage.getItem("admin_token");
 
       if (!token || !storedUser || storedUser.role !== 'admin') {
-        // If we are already on the login page or similar, don't redirect again
         if (!window.location.pathname.includes("/login")) {
-          console.warn("Unauthorized or session expired. Redirecting...");
-          clearSession();
           window.location.href = "/login?error=admin_required";
         }
         return;
@@ -92,7 +87,7 @@ export default function AdminLayout({ children }) {
   const { socket } = useSocket();
 
   const fetchNotifications = React.useCallback(async ({ silent = false } = {}) => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
     if (!token) return;
     if (!silent) setNotificationsLoading(true);
     try {
@@ -124,7 +119,7 @@ export default function AdminLayout({ children }) {
   };
 
   const handleLogout = () => {
-    clearSession();
+    clearSession('admin');
     window.location.href = "/";
   };
 
@@ -147,7 +142,7 @@ export default function AdminLayout({ children }) {
           </div>
 
           <nav className="flex-1 space-y-10">
-            {sidebarData.map((group, idx) => (
+            {sidebarData.filter(g => g.items.length > 0).map((group, idx) => (
               <div key={idx} className="space-y-4">
                 <div className="text-[10px] font-bold text-[var(--muted)] opacity-60 tracking-widest uppercase px-3">
                   {group.group}
@@ -215,13 +210,7 @@ export default function AdminLayout({ children }) {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="hidden md:flex flex-col text-right">
-                <div className="text-[10px] font-bold text-[var(--muted)] uppercase tracking-wider">Server Status</div>
-                <div className="text-xs font-bold text-green-600 flex items-center gap-1.5 justify-end">
-                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> ONLINE
-                </div>
-              </div>
-              <div className="w-[1px] h-8 bg-[var(--border)] hidden md:block mx-2" />
+
               <div className="relative">
                 <button 
                   onClick={() => { setNotificationsOpen(!notificationsOpen); if(!notificationsOpen) fetchNotifications(); }}

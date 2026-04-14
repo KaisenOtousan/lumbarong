@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../config/app_theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/message_badge_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/socket_service.dart';
 import '../widgets/app_navbar.dart';
@@ -53,6 +54,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
             .toList();
 
         if (mounted) {
+          context.read<MessageBadgeProvider?>()?.applyFromConversations(
+            threads,
+          );
+        }
+
+        if (mounted) {
           setState(() {
             _conversations = threads;
             _loading = false;
@@ -81,31 +88,29 @@ class _MessagesScreenState extends State<MessagesScreen> {
           color: isUnread ? AppTheme.primary : AppTheme.borderLight,
           width: isUnread ? 1.5 : 1,
         ),
-        boxShadow: isUnread ? [
-          BoxShadow(
-            color: AppTheme.primary.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ] : [],
+        boxShadow: isUnread
+            ? [
+                BoxShadow(
+                  color: AppTheme.primary.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : [],
       ),
       clipBehavior: Clip.antiAlias,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            context.push(
-              '/chat/$otherId/${Uri.encodeComponent(otherName)}',
-            ).then((_) => _fetchConversations());
+            context
+                .push('/chat/$otherId/${Uri.encodeComponent(otherName)}')
+                .then((_) => _fetchConversations());
           },
           child: IntrinsicHeight(
             child: Row(
               children: [
-                if (isUnread)
-                  Container(
-                    width: 4,
-                    color: AppTheme.primary,
-                  ),
+                if (isUnread) Container(width: 4, color: AppTheme.primary),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -137,7 +142,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
                                     child: Text(
@@ -153,14 +159,19 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                   ),
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
                                       Text(
                                         DateFormat.jm().format(timestamp),
                                         style: TextStyle(
                                           fontSize: 10,
-                                          fontWeight: isUnread ? FontWeight.w800 : FontWeight.w600,
-                                          color: isUnread ? AppTheme.rust : AppTheme.textMuted,
+                                          fontWeight: isUnread
+                                              ? FontWeight.w800
+                                              : FontWeight.w600,
+                                          color: isUnread
+                                              ? AppTheme.rust
+                                              : AppTheme.textMuted,
                                         ),
                                       ),
                                       if (isUnread)
@@ -218,7 +229,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
     final filtered = _conversations.where((conv) {
       final otherUser = conv['otherUser'] as Map? ?? {};
-      final name = (otherUser['shopName'] ?? otherUser['name'] ?? '').toString().toLowerCase();
+      final name = (otherUser['shopName'] ?? otherUser['name'] ?? '')
+          .toString()
+          .toLowerCase();
       return name.contains(_searchQuery.toLowerCase());
     }).toList();
 
@@ -278,7 +291,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
               ],
             ),
           ),
-          
+
           // Search Bar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -292,8 +305,15 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 onChanged: (val) => setState(() => _searchQuery = val),
                 decoration: InputDecoration(
                   hintText: 'Search artisans...',
-                  hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 14),
-                  prefixIcon: const Icon(Icons.search, color: AppTheme.textMuted, size: 20),
+                  hintStyle: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 14,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    color: AppTheme.textMuted,
+                    size: 20,
+                  ),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 ),
@@ -352,7 +372,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
                             child: Center(
                               child: Text(
                                 'No active conversations found',
-                                style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontStyle: FontStyle.italic),
+                                style: TextStyle(
+                                  color: AppTheme.textMuted,
+                                  fontSize: 13,
+                                  fontStyle: FontStyle.italic,
+                                ),
                               ),
                             ),
                           )
@@ -361,20 +385,31 @@ class _MessagesScreenState extends State<MessagesScreen> {
                             child: ListView.separated(
                               padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
                               itemCount: filtered.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 12),
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
                               itemBuilder: (ctx, i) {
                                 final conv = filtered[i];
-                                final otherUser = conv['otherUser'] as Map? ?? {};
+                                final otherUser =
+                                    conv['otherUser'] as Map? ?? {};
                                 final lastMsg = conv['lastMessage'] ?? '';
-                                
+
                                 final timestamp = conv['timestamp'] != null
-                                    ? DateTime.tryParse(conv['timestamp'].toString()) ?? DateTime.now()
+                                    ? DateTime.tryParse(
+                                            conv['timestamp'].toString(),
+                                          ) ??
+                                          DateTime.now()
                                     : DateTime.now();
                                 final unread = conv['unreadCount'] ?? 0;
 
-                                final String otherId = otherUser['id']?.toString() ?? '';
-                                final String rawName = (otherUser['shopName'] ?? otherUser['name'])?.toString() ?? 'User';
-                                final String otherName = rawName.isNotEmpty ? rawName : 'User';
+                                final String otherId =
+                                    otherUser['id']?.toString() ?? '';
+                                final String rawName =
+                                    (otherUser['shopName'] ?? otherUser['name'])
+                                        ?.toString() ??
+                                    'User';
+                                final String otherName = rawName.isNotEmpty
+                                    ? rawName
+                                    : 'User';
 
                                 return _buildConversationTile(
                                   otherId,
@@ -395,4 +430,3 @@ class _MessagesScreenState extends State<MessagesScreen> {
     );
   }
 }
-

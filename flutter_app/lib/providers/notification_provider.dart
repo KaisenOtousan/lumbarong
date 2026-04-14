@@ -18,8 +18,7 @@ class NotificationProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get notifications => _notifications;
   bool get loading => _loading;
 
-  int get unreadCount =>
-      _notifications.where((n) => n['read'] == false).length;
+  int get unreadCount => _notifications.where((n) => n['read'] != true).length;
 
   /// Initialize socket listeners for real-time notifications
   void _initializeSocket() {
@@ -28,10 +27,31 @@ class NotificationProvider extends ChangeNotifier {
     });
   }
 
+  Map<String, dynamic> _normalizeNotification(Map<String, dynamic> notif) {
+    return {
+      ...notif,
+      'id': notif['id']?.toString(),
+      'read': notif['read'] == true,
+    };
+  }
+
+  void _setNotificationRead(String id, {bool notify = true}) {
+    final index = _notifications.indexWhere((n) => n['id']?.toString() == id);
+    if (index == -1) return;
+
+    _notifications[index] = {..._notifications[index], 'read': true};
+
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
   /// Add notification to list (live from socket)
   void _addNotification(Map<String, dynamic> notif) {
-    final normalized = Map<String, dynamic>.from(notif);
-    final idx = _notifications.indexWhere((n) => n['id'] == normalized['id']);
+    final normalized = _normalizeNotification(Map<String, dynamic>.from(notif));
+    final idx = _notifications.indexWhere(
+      (n) => n['id']?.toString() == normalized['id']?.toString(),
+    );
     if (idx != -1) {
       _notifications[idx] = normalized;
     } else {
@@ -48,9 +68,17 @@ class NotificationProvider extends ChangeNotifier {
       final res = await _api.get<dynamic>('/notifications');
       final data = res.data;
       if (data is List) {
-        _notifications = data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        _notifications.sort((a, b) =>
-            (b['createdAt']?.toString() ?? '').compareTo(a['createdAt']?.toString() ?? ''));
+        _notifications = data
+            .map(
+              (e) =>
+                  _normalizeNotification(Map<String, dynamic>.from(e as Map)),
+            )
+            .toList();
+        _notifications.sort(
+          (a, b) => (b['createdAt']?.toString() ?? '').compareTo(
+            a['createdAt']?.toString() ?? '',
+          ),
+        );
       }
     } catch (_) {
       // Silently fail — don't crash the app if notifications can't be fetched
@@ -63,20 +91,19 @@ class NotificationProvider extends ChangeNotifier {
   /// Mark notification as read
   Future<void> markAsRead(String id) async {
     try {
+      _setNotificationRead(id);
       await _api.put<dynamic>('/notifications/$id/read');
-      final idx = _notifications.indexWhere((n) => n['id'] == id);
-      if (idx != -1) {
-        _notifications[idx] = {..._notifications[idx], 'read': true};
-        notifyListeners();
-      }
     } catch (_) {}
   }
 
   /// Mark all notifications as read
   Future<void> markAllAsRead() async {
-    final unread = _notifications.where((n) => n['read'] == false).toList();
+    final unread = _notifications.where((n) => n['read'] != true).toList();
     for (final n in unread) {
-      await markAsRead(n['id'] as String);
+      final id = n['id']?.toString();
+      if (id != null && id.isNotEmpty) {
+        await markAsRead(id);
+      }
     }
   }
 

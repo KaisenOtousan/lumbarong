@@ -26,8 +26,10 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
   late TextEditingController _facebookController;
   late TextEditingController _instagramController;
   late TextEditingController _gcashNumberController;
-  
+  late TextEditingController _mayaNumberController;
+
   File? _gcashQrImage;
+  File? _mayaQrImage;
 
   bool _isLoading = false;
   bool _isSaving = false;
@@ -40,6 +42,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
     _facebookController = TextEditingController();
     _instagramController = TextEditingController();
     _gcashNumberController = TextEditingController();
+    _mayaNumberController = TextEditingController();
     _loadProfileData();
   }
 
@@ -50,6 +53,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
     _facebookController.dispose();
     _instagramController.dispose();
     _gcashNumberController.dispose();
+    _mayaNumberController.dispose();
     super.dispose();
   }
 
@@ -68,17 +72,17 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
 
       if (profile != null && mounted) {
         setState(() {
-          _shopNameController.text =
-            profile?['shopName']?.toString() ?? '';
+          _shopNameController.text = profile?['shopName']?.toString() ?? '';
           _mobileController.text =
-            profile?['mobileNumber']?.toString() ??
-            profile?['mobile']?.toString() ?? '';
-          _facebookController.text =
-            profile?['facebookLink']?.toString() ?? '';
+              profile?['mobileNumber']?.toString() ??
+              profile?['mobile']?.toString() ??
+              '';
+          _facebookController.text = profile?['facebookLink']?.toString() ?? '';
           _instagramController.text =
-            profile?['instagramLink']?.toString() ?? '';
+              profile?['instagramLink']?.toString() ?? '';
           _gcashNumberController.text =
-            profile?['gcashNumber']?.toString() ?? '';
+              profile?['gcashNumber']?.toString() ?? '';
+          _mayaNumberController.text = profile?['mayaNumber']?.toString() ?? '';
         });
       }
     } catch (_) {
@@ -88,7 +92,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
     }
   }
 
-  Future<void> _pickGcashQrImage() async {
+  Future<void> _pickQrImage({required bool maya}) async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -97,7 +101,11 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
 
       if (pickedFile != null) {
         setState(() {
-          _gcashQrImage = File(pickedFile.path);
+          if (maya) {
+            _mayaQrImage = File(pickedFile.path);
+          } else {
+            _gcashQrImage = File(pickedFile.path);
+          }
         });
       }
     } catch (_) {
@@ -115,12 +123,13 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
 
     setState(() => _isSaving = true);
     try {
-      final updateData = {
+      final Map<String, dynamic> updateData = {
         'shopName': shopName,
         'mobileNumber': _mobileController.text.trim(),
         'facebookLink': _facebookController.text.trim(),
         'instagramLink': _instagramController.text.trim(),
         'gcashNumber': _gcashNumberController.text.trim(),
+        'mayaNumber': _mayaNumberController.text.trim(),
       };
 
       if (_gcashQrImage != null) {
@@ -132,15 +141,24 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
         });
         final uploadRes = await _api.postMultipart('/upload', data: formData);
         if (uploadRes.data is Map && (uploadRes.data as Map)['url'] != null) {
-          updateData['gcashQrCode'] =
-              (uploadRes.data as Map)['url'].toString();
+          updateData['gcashQrCode'] = (uploadRes.data as Map)['url'].toString();
         }
       }
 
-      await _api.put(
-        '/users/profile',
-        data: updateData,
-      );
+      if (_mayaQrImage != null) {
+        final formData = FormData.fromMap({
+          'image': await MultipartFile.fromFile(
+            _mayaQrImage!.path,
+            filename: 'maya-qr.jpg',
+          ),
+        });
+        final uploadRes = await _api.postMultipart('/upload', data: formData);
+        if (uploadRes.data is Map && (uploadRes.data as Map)['url'] != null) {
+          updateData['mayaQrCode'] = (uploadRes.data as Map)['url'].toString();
+        }
+      }
+
+      await _api.put('/users/profile', data: updateData);
 
       if (!mounted) return;
       _showSnack('Platform identity updated successfully.');
@@ -167,9 +185,9 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -184,10 +202,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: const LumBarongAppBar(
-        title: 'My Profile',
-        showBack: true,
-      ),
+      appBar: const LumBarongAppBar(title: 'My Profile', showBack: true),
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppTheme.primary),
@@ -241,7 +256,8 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
                                 const SizedBox(width: 14),
                                 const Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'Edit Profile',
@@ -281,7 +297,8 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
                                 const SizedBox(height: 14),
                                 LayoutBuilder(
                                   builder: (context, constraints) {
-                                    final twoColumns = constraints.maxWidth >= 720;
+                                    final twoColumns =
+                                        constraints.maxWidth >= 720;
                                     return Column(
                                       children: [
                                         _buildResponsiveRow(
@@ -324,9 +341,32 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
                                             controller: _gcashNumberController,
                                             hint: '0917-123-4567',
                                             keyboardType: TextInputType.phone,
-                                            icon: Icons.account_balance_wallet_outlined,
+                                            icon: Icons
+                                                .account_balance_wallet_outlined,
                                           ),
-                                          right: _buildImagePickerField(),
+                                          right: _buildImagePickerField(
+                                            label: 'New GCash QR Code (Image)',
+                                            image: _gcashQrImage,
+                                            onTap: () =>
+                                                _pickQrImage(maya: false),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        _buildResponsiveRow(
+                                          twoColumns: twoColumns,
+                                          left: _buildTextField(
+                                            label: 'Maya Direct Pay Number',
+                                            controller: _mayaNumberController,
+                                            hint: '0917-123-4567',
+                                            keyboardType: TextInputType.phone,
+                                            icon: Icons.credit_card_outlined,
+                                          ),
+                                          right: _buildImagePickerField(
+                                            label: 'New Maya QR Code (Image)',
+                                            image: _mayaQrImage,
+                                            onTap: () =>
+                                                _pickQrImage(maya: true),
+                                          ),
                                         ),
                                       ],
                                     );
@@ -340,7 +380,9 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: AppTheme.primary,
                                       foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(14),
                                       ),
@@ -431,12 +473,16 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
     );
   }
 
-  Widget _buildImagePickerField() {
+  Widget _buildImagePickerField({
+    required String label,
+    required File? image,
+    required VoidCallback onTap,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'New GCash QR Code (Image)',
+        Text(
+          label,
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w800,
@@ -446,7 +492,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
         ),
         const SizedBox(height: 8),
         InkWell(
-          onTap: _isSaving ? null : _pickGcashQrImage,
+          onTap: _isSaving ? null : onTap,
           borderRadius: BorderRadius.circular(14),
           child: Container(
             width: double.infinity,
@@ -454,7 +500,9 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFFFBFAF8),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.22)),
+              border: Border.all(
+                color: AppTheme.primary.withValues(alpha: 0.22),
+              ),
             ),
             child: Row(
               children: [
@@ -477,7 +525,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _gcashQrImage?.path.split('\\').last.split('/').last ??
+                        image?.path.split('\\').last.split('/').last ??
                             'Choose file',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -498,7 +546,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
                     ],
                   ),
                 ),
-                if (_gcashQrImage != null)
+                if (image != null)
                   const Icon(Icons.check_circle, color: AppTheme.primary),
               ],
             ),
@@ -526,13 +574,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
     required Widget right,
   }) {
     if (!twoColumns) {
-      return Column(
-        children: [
-          left,
-          const SizedBox(height: 16),
-          right,
-        ],
-      );
+      return Column(children: [left, const SizedBox(height: 16), right]);
     }
 
     return Row(

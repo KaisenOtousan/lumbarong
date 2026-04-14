@@ -19,6 +19,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<ProductModel> products = [];
+  List<String> _dbCategories = [];
   bool loading = true;
   String? error;
   String activeCategory = 'ALL';
@@ -29,6 +30,19 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _categoryOptions() {
     final seen = <String>{};
     final options = <String>['ALL'];
+
+    final Object? rawDbCategories = _dbCategories;
+    final Iterable<String> dbCategories = rawDbCategories is Iterable
+        ? rawDbCategories.whereType<String>()
+        : const <String>[];
+
+    for (final category in dbCategories) {
+      final normalized = category.trim();
+      if (normalized.isEmpty) continue;
+      if (seen.add(normalized.toLowerCase())) {
+        options.add(normalized);
+      }
+    }
 
     for (final product in products) {
       final category = _primaryCategory(product);
@@ -112,8 +126,34 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadCategories() async {
-    // Categories are now synchronized with the premium web selection.
-    // The list is derived from the loaded product data.
+    try {
+      final res = await ApiClient().get('/categories');
+      if (res.data is! List) return;
+
+      final names =
+          (res.data as List)
+              .map((e) {
+                if (e is Map && e['name'] != null) {
+                  return e['name'].toString().trim();
+                }
+                return '';
+              })
+              .where((name) => name.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+      if (!mounted) return;
+      setState(() {
+        _dbCategories = List<String>.from(names);
+        if (activeCategory != 'ALL' &&
+            !_categoryOptions().contains(activeCategory)) {
+          activeCategory = 'ALL';
+        }
+      });
+    } catch (_) {
+      // Keep product-derived categories as fallback.
+    }
   }
 
   Future<void> _loadProducts() async {

@@ -41,7 +41,7 @@ export default function LandingPage() {
       {/* Header */}
       <header className="relative z-50 w-full px-6 md:px-8 lg:px-14 py-6 md:py-8 flex items-center justify-between">
         <Link href="/" className="relative z-[60]">
-          <span className="font-serif text-2xl font-black italic tracking-tight text-[#D4B896]">
+          <span className="font-serif text-lg font-black italic tracking-tight text-[#D4B896]">
             LumbaRong
           </span>
         </Link>
@@ -140,20 +140,11 @@ export default function LandingPage() {
           initial="hidden"
           animate="visible"
         >
-          {/* Eyebrow badge */}
-          <motion.div variants={itemVariants}>
-            <div className="inline-flex items-center gap-2 border border-[#C0422A]/50 bg-[#C0422A]/10 backdrop-blur-sm px-3 py-1.5 rounded-full mb-6 mt-4 md:mt-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#C0422A] animate-pulse" />
-              <span className="text-[#E8604A] text-[9px] font-extrabold tracking-[0.22em] uppercase">
-                Direct Seller Access
-              </span>
-            </div>
-          </motion.div>
 
           {/* Headline */}
           <motion.h1
             variants={itemVariants}
-            className="text-[3.25rem] md:text-[4.5rem] lg:text-[5.5rem] leading-[1.05] md:leading-[0.93] font-serif font-black text-[#F7F3EE] tracking-tight mb-6"
+            className="text-[1.5rem] sm:text-[2rem] md:text-[3rem] lg:text-[3.75rem] leading-[1.1] md:leading-[0.95] font-serif font-black text-[#F7F3EE] tracking-tight mb-4"
           >
             Wear the <br className="hidden sm:block" />
             <span className="text-[#C0422A] italic font-serif">Spirit</span> of the{" "}
@@ -164,7 +155,7 @@ export default function LandingPage() {
           {/* Subheadline */}
           <motion.p
             variants={itemVariants}
-            className="text-[#D4B896]/80 text-sm md:text-base leading-relaxed mb-10 font-medium max-w-[440px] italic pr-4"
+            className="text-[#D4B896]/80 text-xs md:text-sm leading-relaxed mb-8 font-medium max-w-[380px] italic pr-4"
           >
             Buy directly from the makers of Barong. High quality, handmade clothes sent to your home.
           </motion.p>

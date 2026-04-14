@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import CustomerLayout from "@/components/CustomerLayout";
 import AdminLayout from "@/components/AdminLayout";
 import SellerLayout from "@/components/SellerLayout";
-import { MessageCircle, Search, Store, Send, Loader2 } from "lucide-react";
+import { MessageCircle, Search, Store, Send, Loader2, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -37,8 +37,22 @@ function MessagesThreadManager() {
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem("user") || "{}");
-      setUserRole(stored.role || "customer");
+      const adminData = JSON.parse(localStorage.getItem("admin_user") || "null");
+      const sellerData = JSON.parse(localStorage.getItem("seller_user") || "null");
+      const customerData = JSON.parse(localStorage.getItem("customer_user") || "null");
+      const legacyData = JSON.parse(localStorage.getItem("user") || "null");
+
+      if (adminData?.role === 'admin') {
+        setUserRole('admin');
+      } else if (sellerData?.role === 'seller') {
+        setUserRole('seller');
+      } else if (customerData?.role === 'customer') {
+        setUserRole('customer');
+      } else if (legacyData?.role) {
+        setUserRole(legacyData.role);
+      } else {
+        setUserRole("customer");
+      }
     } catch (e) {
       setUserRole("customer");
     }
@@ -165,7 +179,10 @@ function MessagesThreadManager() {
         setActiveThread(realThread);
       }
 
-      setMessages(prev => [...prev, res.data]);
+      setMessages(prev => {
+        if (prev.some(m => m.id === res.data.id)) return prev;
+        return [...prev, res.data];
+      });
       setNewMessage("");
     } catch (err) {
       console.error("Failed to send message");
@@ -178,6 +195,7 @@ function MessagesThreadManager() {
     <MessagesUI
       threads={threads}
       activeThread={activeThread}
+      setActiveThread={setActiveThread}
       messages={messages}
       setMessages={setMessages}
       newMessage={newMessage}
@@ -195,6 +213,7 @@ function MessagesThreadManager() {
 function MessagesUI({
   threads,
   activeThread,
+  setActiveThread,
   messages,
   setMessages,
   newMessage,
@@ -219,7 +238,7 @@ function MessagesUI({
     <Layout>
       <div className="max-w-7xl mx-auto h-[calc(100vh-140px)] flex flex-col md:flex-row gap-8">
         {/* Thread List */}
-        <div className="w-full md:w-96 flex flex-col gap-6">
+        <div className={`w-full md:w-96 flex flex-col gap-6 ${activeThread ? 'hidden md:flex' : 'flex'}`}>
           <div>
             <div className="eyebrow">Communication</div>
             <h1 className="font-serif text-3xl font-bold tracking-tight text-[var(--charcoal)]">
@@ -283,11 +302,17 @@ function MessagesUI({
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
+        <div className={`flex-1 flex flex-col h-full overflow-hidden ${activeThread ? 'flex' : 'hidden md:flex'}`}>
           {activeThread ? (
             <div className="artisan-card p-0 flex flex-col h-full shadow-2xl overflow-hidden animate-fade-up">
               <div className="p-6 border-b border-[var(--border)] flex items-center justify-between bg-white z-10">
                 <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => setActiveThread(null)}
+                    className="md:hidden p-2 -ml-2 text-[var(--muted)] hover:text-[var(--rust)] transition-colors"
+                  >
+                    <ArrowLeft className="w-6 h-6" />
+                  </button>
                   <div className="w-10 h-10 bg-[var(--bark)] rounded-xl flex items-center justify-center text-white font-serif text-base font-bold">
                     {activeThread.otherUser?.name?.[0] || 'A'}
                   </div>
@@ -342,7 +367,11 @@ function MessagesUI({
                 </div>
 
                 {messages.map((msg, i) => {
-                  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+                  let storedUser = {};
+                  try {
+                    storedUser = JSON.parse(localStorage.getItem("customer_user") || localStorage.getItem("user") || "{}");
+                  } catch(e) {}
+                  
                   const msgSenderId = msg.senderId || msg.sender?.id;
                   const isMe = String(msgSenderId) === String(storedUser.id);
                   const senderName = msg.sender?.name || activeThread.otherUser?.name || 'User';

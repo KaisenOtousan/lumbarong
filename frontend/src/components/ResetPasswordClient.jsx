@@ -80,7 +80,7 @@ export default function ResetPasswordClient() {
           background: "white",
           borderRadius: "2.5rem",
           border: "1px solid var(--border, #E5DDD5)",
-          padding: "2.5rem",
+          padding: "2rem",
           boxShadow: "0 20px 60px rgba(60,40,20,0.08)",
         }}
       >
@@ -95,7 +95,7 @@ export default function ResetPasswordClient() {
           <div>
             <Link href="/" className="inline-block mb-1">
               <span
-                className="font-serif text-3xl font-black italic tracking-tight"
+                className="font-serif text-xl font-black italic tracking-tight"
                 style={{ color: "var(--rust, #C0422A)" }}
               >
                 LumbaRong
@@ -127,7 +127,7 @@ export default function ResetPasswordClient() {
 
         {!token ? (
           <div className="space-y-6 text-center">
-            <h1 className="font-serif text-3xl font-bold text-[var(--charcoal)]">Invalid reset link</h1>
+            <h1 className="font-serif text-xl font-bold text-[var(--charcoal)]">Invalid reset link</h1>
             <p className="text-sm leading-6 text-[var(--muted)]">
               This reset link is incomplete. Request a new one to continue.
             </p>
@@ -135,10 +135,10 @@ export default function ResetPasswordClient() {
               href="/forgot-password"
               className="w-full inline-flex items-center justify-center gap-3 text-white text-[10px] font-bold uppercase tracking-[0.2em]"
               style={{
-                padding: "1.125rem",
+                padding: "0.875rem",
                 borderRadius: "9999px",
                 background: "var(--bark, #3D2B1F)",
-                boxShadow: "0 8px 24px rgba(60,43,31,0.18)",
+                boxShadow: "0 6px 20px rgba(60,43,31,0.18)",
               }}
             >
               Request New Link <ArrowRight className="w-4 h-4" />
@@ -150,7 +150,7 @@ export default function ResetPasswordClient() {
               <CheckCircle2 className="w-8 h-8" />
             </div>
             <div className="space-y-3">
-              <h1 className="font-serif text-3xl font-bold text-[var(--charcoal)]">Password updated</h1>
+              <h1 className="font-serif text-xl font-bold text-[var(--charcoal)]">Password updated</h1>
               <p className="text-sm leading-6 text-[var(--muted)]">
                 Your account password has been changed. Continue to login with the new password.
               </p>
@@ -159,10 +159,10 @@ export default function ResetPasswordClient() {
               href="/login"
               className="w-full inline-flex items-center justify-center gap-3 text-white text-[10px] font-bold uppercase tracking-[0.2em]"
               style={{
-                padding: "1.125rem",
+                padding: "0.875rem",
                 borderRadius: "9999px",
                 background: "var(--bark, #3D2B1F)",
-                boxShadow: "0 8px 24px rgba(60,43,31,0.18)",
+                boxShadow: "0 6px 20px rgba(60,43,31,0.18)",
               }}
             >
               Go To Login <ArrowRight className="w-4 h-4" />
@@ -171,7 +171,7 @@ export default function ResetPasswordClient() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
             <div className="space-y-3 text-center">
-              <h1 className="font-serif text-3xl font-bold text-[var(--charcoal)]">Set a new password</h1>
+              <h1 className="font-serif text-xl font-bold text-[var(--charcoal)]">Set a new password</h1>
               <p className="text-sm leading-6 text-[var(--muted)]">
                 Choose a new password for your account. This reset link can only be used once.
               </p>
@@ -199,14 +199,15 @@ export default function ResetPasswordClient() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   style={{
-                    paddingLeft: "3.5rem",
-                    paddingRight: "3.5rem",
-                    paddingTop: "1.125rem",
-                    paddingBottom: "1.125rem",
+                    paddingLeft: "3rem",
+                    paddingRight: "3rem",
+                    paddingTop: "0.75rem",
+                    paddingBottom: "0.75rem",
                     background: "var(--input-bg, #F9F6F2)",
                     borderRadius: "9999px",
                     border: "1.5px solid transparent",
                     color: "var(--charcoal, #1C1917)",
+                    fontSize: "0.8rem",
                   }}
                   onFocus={(event) => {
                     event.target.style.borderColor = "var(--rust)";
@@ -247,14 +248,15 @@ export default function ResetPasswordClient() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   style={{
-                    paddingLeft: "3.5rem",
-                    paddingRight: "1.5rem",
-                    paddingTop: "1.125rem",
-                    paddingBottom: "1.125rem",
+                    paddingLeft: "3rem",
+                    paddingRight: "1.25rem",
+                    paddingTop: "0.75rem",
+                    paddingBottom: "0.75rem",
                     background: "var(--input-bg, #F9F6F2)",
                     borderRadius: "9999px",
                     border: "1.5px solid transparent",
                     color: "var(--charcoal, #1C1917)",
+                    fontSize: "0.8rem",
                   }}
                   onFocus={(event) => {
                     event.target.style.borderColor = "var(--rust)";
@@ -276,10 +278,10 @@ export default function ResetPasswordClient() {
               transition={{ type: "spring", stiffness: 400, damping: 20 }}
               className="w-full text-white text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-3 mt-4 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                padding: "1.125rem",
+                padding: "0.875rem",
                 borderRadius: "9999px",
                 background: "var(--bark, #3D2B1F)",
-                boxShadow: "0 8px 24px rgba(60,43,31,0.18)",
+                boxShadow: "0 6px 20px rgba(60,43,31,0.18)",
               }}
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Reset Password <ArrowRight className="w-4 h-4" /></>}

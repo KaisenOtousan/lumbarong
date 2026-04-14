@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'config/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
+import 'providers/message_badge_provider.dart';
 import 'providers/notification_provider.dart';
 
 // Auth
@@ -43,6 +44,8 @@ import 'screens/seller/edit_product_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
 import 'screens/admin/admin_sellers_screen.dart';
 import 'screens/admin/admin_products_screen.dart';
+import 'screens/admin/admin_users_screen.dart';
+import 'screens/admin/admin_activity_screen.dart';
 import 'screens/admin/admin_settings_screen.dart';
 
 void main() {
@@ -73,6 +76,10 @@ void main() {
         return '/home';
       }
 
+      if (user.role == 'admin' && loc.startsWith('/profile')) {
+        return '/admin/dashboard';
+      }
+
       return null;
     },
     routes: [
@@ -83,56 +90,113 @@ void main() {
 
       // Customer
       GoRoute(path: '/home', builder: (c, s) => const HomeScreen()),
-      GoRoute(path: '/products/:id', builder: (c, s) => ProductDetailScreen(productId: s.pathParameters['id']!)),
+      GoRoute(
+        path: '/products/:id',
+        builder: (c, s) =>
+            ProductDetailScreen(productId: s.pathParameters['id']!),
+      ),
       GoRoute(path: '/cart', builder: (c, s) => const CartScreen()),
       GoRoute(path: '/checkout', builder: (c, s) => const CheckoutScreen()),
       GoRoute(path: '/orders', builder: (c, s) => const OrdersScreen()),
       GoRoute(path: '/messages', builder: (c, s) => const MessagesScreen()),
-      GoRoute(path: '/notifications', builder: (c, s) => const NotificationsScreen()),
+      GoRoute(
+        path: '/notifications',
+        builder: (c, s) => const NotificationsScreen(),
+      ),
       GoRoute(
         path: '/shop',
-        builder: (c, s) => ShopScreen(
-          sellerId: s.uri.queryParameters['id'],
-        ),
+        builder: (c, s) => ShopScreen(sellerId: s.uri.queryParameters['id']),
       ),
       GoRoute(
         path: '/shop/:id',
-        builder: (c, s) => ShopScreen(
-          sellerId: s.pathParameters['id'],
+        builder: (c, s) => ShopScreen(sellerId: s.pathParameters['id']),
+      ),
+      GoRoute(
+        path: '/heritage-guide',
+        builder: (c, s) => const HeritageGuideScreen(),
+      ),
+      GoRoute(path: '/about', builder: (c, s) => const AboutScreen()),
+      GoRoute(
+        path: '/chat/:userId/:userName',
+        builder: (c, s) => ChatDetailScreen(
+          otherUserId: s.pathParameters['userId']!,
+          otherUserName: s.pathParameters['userName']!,
         ),
       ),
-      GoRoute(path: '/heritage-guide', builder: (c, s) => const HeritageGuideScreen()),
-      GoRoute(path: '/about', builder: (c, s) => const AboutScreen()),
-      GoRoute(path: '/chat/:userId/:userName', builder: (c, s) => ChatDetailScreen(
-        otherUserId: s.pathParameters['userId']!,
-        otherUserName: s.pathParameters['userName']!,
-      )),
 
       // Profile
       GoRoute(path: '/profile', builder: (c, s) => const ProfileScreen()),
-      GoRoute(path: '/profile/addresses', builder: (c, s) => const AddressListScreen()),
-      GoRoute(path: '/profile/addresses/add', builder: (c, s) => const AddEditAddressScreen()),
-      GoRoute(path: '/profile/addresses/edit', builder: (c, s) => AddEditAddressScreen(
-        initialAddress: s.extra as Map<String, dynamic>?,
-      )),
-      GoRoute(path: '/profile/edit-identity', builder: (c, s) => const EditIdentityScreen()),
+      GoRoute(
+        path: '/profile/addresses',
+        builder: (c, s) => const AddressListScreen(),
+      ),
+      GoRoute(
+        path: '/profile/addresses/add',
+        builder: (c, s) => const AddEditAddressScreen(),
+      ),
+      GoRoute(
+        path: '/profile/addresses/edit',
+        builder: (c, s) => AddEditAddressScreen(
+          initialAddress: s.extra as Map<String, dynamic>?,
+        ),
+      ),
+      GoRoute(
+        path: '/profile/edit-identity',
+        builder: (c, s) => const EditIdentityScreen(),
+      ),
 
       // Seller
-      GoRoute(path: '/seller/dashboard', builder: (c, s) => const SellerDashboardScreen()),
-      GoRoute(path: '/seller/orders', builder: (c, s) => const SellerOrdersScreen()),
-      GoRoute(path: '/seller/inventory', builder: (c, s) => const SellerInventoryScreen()),
-      GoRoute(path: '/seller/products', builder: (c, s) => const SellerProductsScreen()),
-      GoRoute(path: '/seller/add-product', builder: (c, s) => const AddProductScreen()),
+      GoRoute(
+        path: '/seller/dashboard',
+        builder: (c, s) => const SellerDashboardScreen(),
+      ),
+      GoRoute(
+        path: '/seller/orders',
+        builder: (c, s) => const SellerOrdersScreen(),
+      ),
+      GoRoute(
+        path: '/seller/inventory',
+        builder: (c, s) => const SellerInventoryScreen(),
+      ),
+      GoRoute(
+        path: '/seller/products',
+        builder: (c, s) => const SellerProductsScreen(),
+      ),
+      GoRoute(
+        path: '/seller/add-product',
+        builder: (c, s) => const AddProductScreen(),
+      ),
       GoRoute(
         path: '/seller/edit-product',
-        builder: (c, s) => EditProductScreen(productId: s.uri.queryParameters['id']!),
+        builder: (c, s) =>
+            EditProductScreen(productId: s.uri.queryParameters['id']!),
       ),
 
       // Admin
-      GoRoute(path: '/admin/dashboard', builder: (c, s) => const AdminDashboardScreen()),
-      GoRoute(path: '/admin/sellers', builder: (c, s) => const AdminSellersScreen()),
-      GoRoute(path: '/admin/products', builder: (c, s) => const AdminProductsScreen()),
-      GoRoute(path: '/admin/settings', builder: (c, s) => const AdminSettingsScreen()),
+      GoRoute(
+        path: '/admin/dashboard',
+        builder: (c, s) => const AdminDashboardScreen(),
+      ),
+      GoRoute(
+        path: '/admin/activity',
+        builder: (c, s) => const AdminActivityScreen(),
+      ),
+      GoRoute(
+        path: '/admin/users',
+        builder: (c, s) => const AdminUsersScreen(),
+      ),
+      GoRoute(
+        path: '/admin/sellers',
+        builder: (c, s) => const AdminSellersScreen(),
+      ),
+      GoRoute(
+        path: '/admin/products',
+        builder: (c, s) => const AdminProductsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/settings',
+        builder: (c, s) => const AdminSettingsScreen(),
+      ),
     ],
   );
 
@@ -141,6 +205,7 @@ void main() {
       providers: [
         ChangeNotifierProvider.value(value: authProvider),
         ChangeNotifierProvider.value(value: cartProvider),
+        ChangeNotifierProvider(create: (_) => MessageBadgeProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
       ],
       child: MaterialApp.router(

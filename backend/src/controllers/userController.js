@@ -1,6 +1,9 @@
 const User = require('../models/User');
 const Address = require('../models/Address');
+const Order = require('../models/Order');
 const socketUtility = require('../utils/socketUtility');
+const { getRangeBounds } = require('../utils/dateHelper');
+const { Op } = require('sequelize');
 
 exports.getProfile = async (req, res) => {
     try {
@@ -16,7 +19,7 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
     try {
-        const { name, mobileNumber, gcashNumber, profilePhoto, facebookLink, instagramLink } = req.body;
+        const { name, mobileNumber, gcashNumber, gcashQrCode, mayaNumber, mayaQrCode, profilePhoto, facebookLink, instagramLink, tiktokLink, youtubeLink, socialLinks, shopHouseNo, shopStreet, shopAddress, shopBarangay, shopCity, shopProvince, shopPostalCode, shopLatitude, shopLongitude } = req.body;
         const user = await User.findByPk(req.user.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
         
@@ -24,9 +27,24 @@ exports.updateProfile = async (req, res) => {
         if (name) updateData.name = name;
         if (mobileNumber !== undefined) updateData.mobileNumber = mobileNumber;
         if (gcashNumber !== undefined) updateData.gcashNumber = gcashNumber;
+        if (gcashQrCode !== undefined) updateData.gcashQrCode = gcashQrCode;
+        if (mayaNumber !== undefined) updateData.mayaNumber = mayaNumber;
+        if (mayaQrCode !== undefined) updateData.mayaQrCode = mayaQrCode;
         if (profilePhoto !== undefined) updateData.profilePhoto = profilePhoto;
         if (facebookLink !== undefined) updateData.facebookLink = facebookLink;
         if (instagramLink !== undefined) updateData.instagramLink = instagramLink;
+        if (tiktokLink !== undefined) updateData.tiktokLink = tiktokLink;
+        if (youtubeLink !== undefined) updateData.youtubeLink = youtubeLink;
+        if (socialLinks !== undefined) updateData.socialLinks = socialLinks;
+        if (shopHouseNo !== undefined) updateData.shopHouseNo = shopHouseNo;
+        if (shopStreet !== undefined) updateData.shopStreet = shopStreet;
+        if (shopAddress !== undefined) updateData.shopAddress = shopAddress;
+        if (shopBarangay !== undefined) updateData.shopBarangay = shopBarangay;
+        if (shopCity !== undefined) updateData.shopCity = shopCity;
+        if (shopProvince !== undefined) updateData.shopProvince = shopProvince;
+        if (shopPostalCode !== undefined) updateData.shopPostalCode = shopPostalCode;
+        if (shopLatitude !== undefined) updateData.shopLatitude = shopLatitude;
+        if (shopLongitude !== undefined) updateData.shopLongitude = shopLongitude;
 
         await user.update(updateData);
 
@@ -47,26 +65,23 @@ exports.getAddresses = async (req, res) => {
             where: { userId: req.user.id },
             order: [['isDefault', 'DESC'], ['createdAt', 'DESC']]
         });
-        const normalized = addresses.map((a) => {
-            const raw = a.toJSON();
-            return {
-                ...raw,
-                fullName: raw.recipientName,
-                phoneNumber: raw.phone,
-            };
-        });
-        res.json(normalized);
+        res.json(addresses);
     } catch (err) {
-        console.error('getAddresses Error:', { userId: req.user?.id, error: err });
+        console.error('getAddresses Error:', err);
         res.status(500).json({ message: 'Error fetching addresses', error: err.message });
     }
 };
 
 exports.createAddress = async (req, res) => {
     try {
-        const {
-            fullName,
-            phoneNumber,
+        const { recipientName, phone, houseNo, street, barangay, city, province, postalCode, latitude, longitude, isDefault } = req.body;
+
+        if (isDefault) {
+            await Address.update({ isDefault: false }, { where: { userId: req.user.id } });
+        }
+
+        const address = await Address.create({
+            userId: req.user.id,
             recipientName,
             phone,
             houseNo,
@@ -75,38 +90,12 @@ exports.createAddress = async (req, res) => {
             city,
             province,
             postalCode,
-            label,
-            isDefault,
-        } = req.body;
-
-        const resolvedRecipient = (recipientName ?? fullName ?? '').toString().trim();
-        const resolvedPhone = (phone ?? phoneNumber ?? '').toString().replace(/\D/g, '');
-        const resolvedStreet = (street ?? '').toString().trim();
-        const resolvedHouseNo = (houseNo ?? resolvedStreet).toString().trim();
-
-        if (!resolvedRecipient || !resolvedPhone || !resolvedStreet || !resolvedHouseNo || !barangay || !city || !province || !postalCode) {
-            return res.status(400).json({ message: 'Please complete all required address fields' });
-        }
-
-        if (isDefault) {
-            await Address.update({ isDefault: false }, { where: { userId: req.user.id } });
-        }
-
-        const address = await Address.create({
-            userId: req.user.id,
-            recipientName: resolvedRecipient,
-            phone: resolvedPhone,
-            houseNo: resolvedHouseNo,
-            street: resolvedStreet,
-            barangay,
-            city,
-            province,
-            postalCode,
+            latitude,
+            longitude,
             isDefault: isDefault || false
         });
 
         socketUtility.emitDashboardUpdate();
-
         res.json(address);
     } catch (err) {
         console.error('createAddress Error:', err);
@@ -117,19 +106,7 @@ exports.createAddress = async (req, res) => {
 exports.updateAddress = async (req, res) => {
     try {
         const { id } = req.params;
-        const {
-            fullName,
-            phoneNumber,
-            recipientName,
-            phone,
-            houseNo,
-            street,
-            barangay,
-            city,
-            province,
-            postalCode,
-            isDefault,
-        } = req.body;
+        const { recipientName, phone, houseNo, street, barangay, city, province, postalCode, latitude, longitude, isDefault } = req.body;
 
         const address = await Address.findOne({ where: { id, userId: req.user.id } });
         if (!address) return res.status(404).json({ message: 'Address not found' });
@@ -138,23 +115,21 @@ exports.updateAddress = async (req, res) => {
             await Address.update({ isDefault: false }, { where: { userId: req.user.id } });
         }
 
-        const resolvedStreet = (street ?? address.street ?? '').toString().trim();
-        const resolvedHouseNo = (houseNo ?? resolvedStreet).toString().trim();
-
         await address.update({
-            recipientName: (recipientName ?? fullName ?? address.recipientName ?? '').toString().trim(),
-            phone: (phone ?? phoneNumber ?? address.phone ?? '').toString().replace(/\D/g, ''),
-            houseNo: resolvedHouseNo,
-            street: resolvedStreet,
-            barangay: barangay ?? address.barangay,
-            city: city ?? address.city,
-            province: province ?? address.province,
-            postalCode: (postalCode ?? address.postalCode ?? '').toString(),
+            recipientName,
+            phone,
+            houseNo,
+            street,
+            barangay,
+            city,
+            province,
+            postalCode,
+            latitude,
+            longitude,
             isDefault
         });
 
         socketUtility.emitDashboardUpdate();
-
         res.json(address);
     } catch (err) {
         console.error('updateAddress Error:', err);
@@ -180,7 +155,7 @@ exports.setDefaultAddress = async (req, res) => {
 exports.deleteAddress = async (req, res) => {
     try {
         const { id } = req.params;
-        await Address.destroy({ where: { id, userId: req.user.id } });
+        await Address.destroy({ where: { id, UserId: req.user.id } });
 
         socketUtility.emitDashboardUpdate();
 
@@ -205,34 +180,46 @@ exports.updateFcmToken = async (req, res) => {
     }
 };
 
+
+exports.getCustomerStats = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+        // Only return count of active (non-cancelled, non-delivered) orders for the profile card
+        const activeOrders = await Order.count({
+            where: { 
+                customerId, 
+                status: { [Op.notIn]: ['Cancelled', 'Completed', 'Delivered'] } 
+            }
+        });
+
+        res.status(200).json({ activeOrders });
+    } catch (error) {
+        console.error('getCustomerStats Error:', error.message);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const bcrypt = require('bcryptjs');
 
 exports.changePassword = async (req, res) => {
     try {
-        const { oldPassword, newPassword } = req.body;
+        const { currentPassword, newPassword } = req.body;
 
-        if (!oldPassword || !newPassword) {
-            return res.status(400).json({ message: 'Old password and new password are required' });
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ message: 'Current password and new password are required' });
         }
 
-        if (newPassword.length < 6 || newPassword.length > 32) {
-            return res.status(400).json({ message: 'New password must be between 6 and 32 characters long' });
+        if (newPassword.length < 8) {
+            return res.status(400).json({ message: 'New password must be at least 8 characters long' });
         }
 
         const user = await User.findByPk(req.user.id);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
+        if (!user) return res.status(404).json({ message: 'User not found' });
 
-        // Verify old password
-        const isMatch = await bcrypt.compare(oldPassword, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Incorrect old password' });
-        }
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) return res.status(400).json({ message: 'Incorrect current password' });
 
-        // Hash new password
         user.password = await bcrypt.hash(newPassword, 10);
-        user.passwordChangedAt = new Date();
         await user.save();
 
         res.json({ message: 'Password changed successfully' });
@@ -246,7 +233,7 @@ exports.getSellerInfo = async (req, res) => {
     try {
         const { id } = req.params;
         const seller = await User.findByPk(id, {
-            attributes: ['id', 'name', 'createdAt', 'role', 'facebookLink', 'instagramLink']
+            attributes: ['id', 'name', 'createdAt', 'role', 'facebookLink', 'instagramLink', 'tiktokLink', 'youtubeLink', 'socialLinks']
         });
         
         if (!seller || seller.role !== 'seller') {
@@ -255,18 +242,30 @@ exports.getSellerInfo = async (req, res) => {
 
         const monthsJoined = seller.createdAt 
             ? Math.floor((new Date() - new Date(seller.createdAt)) / (1000 * 60 * 60 * 24 * 30)) 
-            : 12;
+            : 0;
+            
+        const establishedDate = seller.createdAt 
+            ? new Date(seller.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+            : "March 2026";
 
         res.json({
             id: seller.id,
             shopName: seller.name || "Lumban Artisan",
-            location: "Lumban, Laguna",
-            rating: 4.9,
+            location: seller.shopCity ? `${seller.shopCity}, ${seller.shopProvince}` : "Lumban, Laguna",
+            rating: avgRating,
+            reviewCount: reviewData[0]?.reviewCount || 0,
+            productCount: productCount,
             joined: (monthsJoined < 1 ? "Just Joined" : `${monthsJoined} Months Ago`),
-            responseRate: "98%",
-            description: "A legacy of fine hand-embroidery passed down through generations. Our workshop specializes in traditional Pina and Jusi Barongs with modern silhouettes.",
+            establishedOn: establishedDate,
+            indigencyStatus: seller.indigencyCertificate ? "Active Support Level" : "Basic Artisan",
+            responseRate: "98%", // Future feature: Track actual response times
+            isVerified: !!seller.isVerified,
+            profilePhoto: seller.profilePhoto,
             facebookLink: seller.facebookLink,
-            instagramLink: seller.instagramLink
+            instagramLink: seller.instagramLink,
+            tiktokLink: seller.tiktokLink,
+            youtubeLink: seller.youtubeLink,
+            socialLinks: seller.socialLinks
         });
     } catch (err) {
         console.error('getSellerInfo Error:', err);

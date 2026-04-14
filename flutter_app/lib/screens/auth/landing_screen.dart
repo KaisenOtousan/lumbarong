@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
-
 
 class LandingScreen extends StatefulWidget {
   const LandingScreen({super.key});
@@ -42,9 +40,7 @@ class _LandingScreenState extends State<LandingScreen> {
     if (auth.loading) {
       return const Scaffold(
         backgroundColor: AppTheme.textPrimary,
-        body: Center(
-          child: CircularProgressIndicator(color: AppTheme.primary),
-        ),
+        body: Center(child: CircularProgressIndicator(color: AppTheme.primary)),
       );
     }
 
@@ -57,12 +53,11 @@ class _LandingScreenState extends State<LandingScreen> {
         children: [
           // Full-bleed background image
           Positioned.fill(
-            child: CachedNetworkImage(
-              imageUrl:
-                  'https://images.unsplash.com/photo-1544441893-675973e31985?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=80',
+            child: Image.asset(
+              'assets/logo/background-app.jpg',
               fit: BoxFit.cover,
-              placeholder: (context, url) => Container(color: AppTheme.charcoal),
-              errorWidget: (context, url, error) => Container(color: AppTheme.charcoal),
+              errorBuilder: (context, error, stackTrace) =>
+                  Container(color: AppTheme.charcoal),
             ),
           ),
           // Dark warm overlay for readability (gradient to right)
@@ -110,14 +105,23 @@ class _LandingScreenState extends State<LandingScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'LumbaRong',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          fontStyle: FontStyle.italic,
-                          color: Color(0xFFD4B896),
-                          letterSpacing: -0.5,
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          'assets/logo/logo-app.jpg',
+                          height: isDesktop ? 56 : 44,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Text(
+                                'LumbaRong',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w900,
+                                  fontStyle: FontStyle.italic,
+                                  color: Color(0xFFD4B896),
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
                         ),
                       ),
                       if (isDesktop)
@@ -149,7 +153,9 @@ class _LandingScreenState extends State<LandingScreen> {
                                   borderRadius: BorderRadius.circular(30),
                                 ),
                                 elevation: 8,
-                                shadowColor: AppTheme.primary.withValues(alpha: 0.3),
+                                shadowColor: AppTheme.primary.withValues(
+                                  alpha: 0.3,
+                                ),
                               ),
                               child: const Text(
                                 'CREATE ACCOUNT',
@@ -164,7 +170,10 @@ class _LandingScreenState extends State<LandingScreen> {
                         )
                       else
                         IconButton(
-                          icon: const Icon(Icons.menu, color: Color(0xFFD4B896)),
+                          icon: const Icon(
+                            Icons.menu,
+                            color: Color(0xFFD4B896),
+                          ),
                           onPressed: () {
                             // Expand bottom sheet or modal menu for mobile
                             showModalBottomSheet(
@@ -261,7 +270,7 @@ class _LandingScreenState extends State<LandingScreen> {
                             color: const Color(0xFFF7F3EE),
                           ),
                         ),
-                        
+
                         const SizedBox(height: 24),
 
                         // Subheadline
@@ -297,7 +306,9 @@ class _LandingScreenState extends State<LandingScreen> {
                                 borderRadius: BorderRadius.circular(30),
                               ),
                               elevation: 12,
-                              shadowColor: AppTheme.primary.withValues(alpha: 0.4),
+                              shadowColor: AppTheme.primary.withValues(
+                                alpha: 0.4,
+                              ),
                             ),
                             child: const Row(
                               mainAxisSize: MainAxisSize.min,
@@ -400,4 +411,3 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 }
-

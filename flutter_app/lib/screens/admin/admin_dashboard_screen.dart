@@ -1,12 +1,26 @@
-import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
+import 'dart:async';
+import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../../config/app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../widgets/app_navbar.dart';
+
+String _compactAxisNum(double value) {
+  if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
+  if (value >= 1000) return '${(value / 1000).toStringAsFixed(0)}k';
+  return value.toStringAsFixed(0);
+}
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -16,86 +30,217 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  Map<String, dynamic>? _stats;
-  List<Map<String, dynamic>> _pendingSellers = [];
-  List<Map<String, dynamic>> _pendingProducts = [];
+  String _dateFilter = 'week';
   bool _loading = true;
-  bool _actionLoading = false;
+  bool _showRevenueTrend = true;
+  bool _showUserGrowth = true;
+
+  Timer? _liveTimer;
+
+  Map<String, dynamic> _stats = {
+    'totalSales': '—',
+    'totalOrders': '—',
+    'activeCustomers': '—',
+    'liveProducts': '—',
+  };
+
+  Map<String, dynamic> _analytics = {
+    'revenueSeries': <Map<String, dynamic>>[],
+    'monthlySignups': <Map<String, dynamic>>[],
+    'topLocations': <Map<String, dynamic>>[],
+    'orderStatusBreakdown': {
+      'pending': 0,
+      'processing': 0,
+      'shipped': 0,
+      'completed': 0,
+      'cancelled': 0,
+    },
+    'topProducts': <Map<String, dynamic>>[],
+    'topCategories': <Map<String, dynamic>>[],
+  };
 
   @override
   void initState() {
     super.initState();
-    _loadStats();
+    _loadDashboard();
+    _liveTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      _loadDashboard(silent: true);
+    });
   }
 
-  Future<void> _loadStats() async {
+  @override
+  void dispose() {
+    _liveTimer?.cancel();
+    super.dispose();
+  }
+
+  double _num(dynamic value, {double fallback = 0}) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  int _toInt(dynamic value) => _num(value).toInt();
+
+  List<Map<String, dynamic>> _asList(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map(
+          (item) =>
+              item.map((key, val) => MapEntry(key?.toString() ?? '', val)),
+        )
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<void> _loadDashboard({bool silent = false}) async {
     if (!mounted) return;
-    setState(() => _loading = true);
-    try {
-      final res = await ApiClient().get('/admin/stats');
-      if (!mounted) return;
-      if (res.data is Map) {
-        setState(() => _stats = Map<String, dynamic>.from(res.data as Map));
-      }
 
-      final sellersRes = await ApiClient().get('/auth/sellers');
+    if (!silent) {
+      setState(() {
+        _loading = true;
+      });
+    }
+
+    try {
+      final statsRes = await ApiClient().get(
+        '/admin/stats',
+        queryParameters: {'range': _dateFilter},
+      );
+      final analyticsRes = await ApiClient().get(
+        '/admin/analytics',
+        queryParameters: {'range': _dateFilter},
+      );
+
       if (!mounted) return;
-      if (sellersRes.data is List) {
+
+      final stats = statsRes.data is Map
+          ? Map<String, dynamic>.from(statsRes.data as Map)
+          : <String, dynamic>{};
+      final analytics = analyticsRes.data is Map
+          ? Map<String, dynamic>.from(analyticsRes.data as Map)
+          : <String, dynamic>{};
+
+      setState(() {
+        _stats = {
+          'totalSales': stats['totalSales'] ?? '—',
+          'totalOrders': stats['totalOrders'] ?? '—',
+          'activeCustomers': stats['activeCustomers'] ?? '—',
+          'liveProducts': stats['liveProducts'] ?? '—',
+        };
+
+        _analytics = {
+          'revenueSeries': _asList(analytics['revenueSeries']),
+          'monthlySignups': _asList(analytics['monthlySignups']),
+          'topLocations': _asList(analytics['topLocations']),
+          'orderStatusBreakdown': analytics['orderStatusBreakdown'] is Map
+              ? Map<String, dynamic>.from(analytics['orderStatusBreakdown'])
+              : {
+                  'pending': 0,
+                  'processing': 0,
+                  'shipped': 0,
+                  'completed': 0,
+                  'cancelled': 0,
+                },
+          'topProducts': _asList(analytics['topProducts']),
+          'topCategories': _asList(analytics['topCategories']),
+        };
+      });
+    } catch (_) {
+      // Keep existing data on transient network errors.
+    } finally {
+      if (mounted && !silent) {
         setState(() {
-          _pendingSellers = (sellersRes.data as List)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .where((s) => s['isVerified'] == false)
-              .toList();
+          _loading = false;
         });
       }
+    }
+  }
 
-      final prodRes = await ApiClient().get('/products');
+  Future<void> _refresh() async {
+    await _loadDashboard(silent: true);
+  }
+
+  Widget _rangeChip(String range) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(range.toUpperCase()),
+        selected: _dateFilter == range,
+        onSelected: (_) {
+          if (_dateFilter == range) return;
+          setState(() => _dateFilter = range);
+          _loadDashboard();
+        },
+        selectedColor: AppTheme.rust,
+        labelStyle: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: _dateFilter == range ? Colors.white : AppTheme.textMuted,
+        ),
+        side: BorderSide(
+          color: _dateFilter == range ? AppTheme.rust : AppTheme.borderLight,
+        ),
+        backgroundColor: Colors.white,
+      ),
+    );
+  }
+
+  String _csvEscape(dynamic value) {
+    final text = value?.toString() ?? '';
+    return '"${text.replaceAll('"', '""')}"';
+  }
+
+  Future<void> _exportReport() async {
+    final rows = <List<dynamic>>[
+      ['Metric', 'Value'],
+      ['Total Sales', _stats['totalSales']],
+      ['Total Orders', _stats['totalOrders']],
+      ['Active Customers', _stats['activeCustomers']],
+      ['Live Products', _stats['liveProducts']],
+    ];
+
+    final csv = rows.map((row) => row.map(_csvEscape).join(',')).join('\n');
+
+    try {
+      final directory = await getTemporaryDirectory();
+      final date = DateTime.now().toIso8601String().split('T').first;
+      final file = File('${directory.path}/lumbarong_report_$date.csv');
+      await file.writeAsString(csv);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Lumbarong admin dashboard report',
+        subject: 'Dashboard report',
+      );
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: csv));
       if (!mounted) return;
-      if (prodRes.data is List) {
-        setState(() {
-          _pendingProducts = (prodRes.data as List)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .where((p) => p['status'] == 'pending')
-              .toList();
-        });
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Share unavailable. Report copied to clipboard.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
-  Future<void> _approveSeller(String id) async {
-    setState(() => _actionLoading = true);
-    try {
-      await ApiClient().put('/auth/approve-seller/$id');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Artisan approved for commerce'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        _loadStats();
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _actionLoading = false);
-  }
+  List<Map<String, dynamic>> get _revenueSeries =>
+      (_analytics['revenueSeries'] as List).cast<Map<String, dynamic>>();
 
-  Future<void> _updateProductStatus(String id, String status) async {
-    setState(() => _actionLoading = true);
-    try {
-      await ApiClient().patch('/products/$id/status', data: {'status': status});
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Product $status successfully'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        _loadStats();
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _actionLoading = false);
-  }
+  List<Map<String, dynamic>> get _monthlySignups =>
+      (_analytics['monthlySignups'] as List).cast<Map<String, dynamic>>();
+
+  List<Map<String, dynamic>> get _topLocations =>
+      (_analytics['topLocations'] as List).cast<Map<String, dynamic>>();
+
+  List<Map<String, dynamic>> get _topProducts =>
+      (_analytics['topProducts'] as List).cast<Map<String, dynamic>>();
+
+  List<Map<String, dynamic>> get _topCategories =>
+      (_analytics['topCategories'] as List).cast<Map<String, dynamic>>();
+
+  Map<String, dynamic> get _statusBreakdown =>
+      Map<String, dynamic>.from(_analytics['orderStatusBreakdown'] as Map);
 
   @override
   Widget build(BuildContext context) {
@@ -111,574 +256,681 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       backgroundColor: const Color(0xFFF9F6F2),
       appBar: const LumBarongAppBar(title: 'Admin Command'),
       bottomNavigationBar: const AppBottomNav(currentIndex: 0),
-      body: Stack(
-        children: [
-          RefreshIndicator(
-            color: AppTheme.primary,
-            onRefresh: _loadStats,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(24, 32, 24, 40),
-                  sliver: SliverToBoxAdapter(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Editorial Header
-                        Text(
-                          'ENTERPRISE OVERVIEW',
-                          style: GoogleFonts.outfit(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2,
-                            color: const Color(0xFF8C7B70),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Text(
-                              'Dashboard ',
-                              style: GoogleFonts.playfairDisplay(
-                                fontSize: 32,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.charcoal,
-                              ),
-                            ),
-                            Text(
-                              'Insights',
-                              style: GoogleFonts.playfairDisplay(
-                                fontSize: 32,
-                                fontWeight: FontWeight.w300,
-                                fontStyle: FontStyle.italic,
-                                color: const Color(0xFFD4B896),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 40),
-
-                        if (_loading)
-                          const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(40),
-                              child: CircularProgressIndicator(color: AppTheme.primary),
-                            ),
-                          )
-                        else ...[
-                          // Stat Cards Layout
-                          LayoutBuilder(builder: (context, constraints) {
-                            final cols = constraints.maxWidth > 600 ? 4 : 2;
-                            return GridView.count(
-                              crossAxisCount: cols,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              mainAxisSpacing: 16,
-                              crossAxisSpacing: 16,
-                              childAspectRatio: 1.3,
-                              children: [
-                                _TrendCard(
-                                  label: 'TOTAL SALES',
-                                  value: '₱${_stats?['totalRevenue'] ?? '--'}',
-                                  change: '+12.4%',
-                                  icon: Icons.payments_outlined,
-                                  color: AppTheme.primary,
-                                ),
-                                _TrendCard(
-                                  label: 'TOTAL ORDERS',
-                                  value: '${_stats?['totalOrders'] ?? '--'}',
-                                  change: '+8.2%',
-                                  icon: Icons.shopping_bag_outlined,
-                                  color: Colors.blue.shade600,
-                                ),
-                                _TrendCard(
-                                  label: 'CUSTOMERS',
-                                  value: '${_stats?['totalUsers'] ?? '--'}',
-                                  change: '+15.5%',
-                                  icon: Icons.people_outline,
-                                  color: Colors.green.shade600,
-                                ),
-                                _TrendCard(
-                                  label: 'LIVE PRODUCTS',
-                                  value: '${_stats?['liveProducts'] ?? '--'}',
-                                  change: '-2.1%',
-                                  icon: Icons.storefront_outlined,
-                                  color: Colors.amber.shade700,
-                                ),
-                              ],
-                            );
-                          }),
-
-                          const SizedBox(height: 40),
-
-                          // Weekly Earning Chart
-                          const _WeeklyEarningsBanner(),
-
-                          const SizedBox(height: 40),
-
-                          // Target & Region Row
-                          _TargetAndRegionSection(),
-
-                          const SizedBox(height: 48),
-                          
-                          // Registry Applications
-                          const _SectionLabel(text: 'REGISTRY APPLICATIONS'),
-                          const SizedBox(height: 16),
-                          if (_pendingSellers.isEmpty)
-                            const _EmptyState(
-                              icon: Icons.shield_outlined,
-                              text: 'No pending artisan registries',
-                            )
-                          else
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _pendingSellers.length,
-                              separatorBuilder: (_, _) => const SizedBox(height: 12),
-                              itemBuilder: (ctx, i) => _SellerRegistryCard(
-                                seller: _pendingSellers[i],
-                                onApprove: _approveSeller,
-                              ),
-                            ),
-
-                          const SizedBox(height: 40),
-                          const _SectionLabel(text: 'PRODUCT REGISTRY'),
-                          const SizedBox(height: 16),
-                          if (_pendingProducts.isEmpty)
-                            const _EmptyState(
-                              icon: Icons.storefront_outlined,
-                              text: 'No pending product listings',
-                            )
-                          else
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _pendingProducts.length,
-                              separatorBuilder: (_, _) => const SizedBox(height: 12),
-                              itemBuilder: (ctx, i) => _ProductRegistryCard(
-                                product: _pendingProducts[i],
-                                onAction: _updateProductStatus,
-                              ),
-                            ),
-                        ],
-                      ],
+      body: RefreshIndicator(
+        color: AppTheme.primary,
+        onRefresh: _refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          children: [
+            const Text(
+              'ENTERPRISE OVERVIEW',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textMuted,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Dashboard ',
+                    style: GoogleFonts.playfairDisplay(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.charcoal,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'Insights',
+                    style: GoogleFonts.playfairDisplay(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w300,
+                      fontStyle: FontStyle.italic,
+                      color: const Color(0xFFD4B896),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                SizedBox(
+                  height: 40,
+                  child: ElevatedButton.icon(
+                    onPressed: _exportReport,
+                    icon: const Icon(Icons.download_outlined, size: 14),
+                    label: const Text('Download Report'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-          ),
-          if (_actionLoading)
-            Container(
-              color: Colors.black26,
-              alignment: Alignment.center,
-              child: const CircularProgressIndicator(color: AppTheme.primary),
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _rangeChip('today'),
+                        _rangeChip('week'),
+                        _rangeChip('month'),
+                        _rangeChip('year'),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
+            const SizedBox(height: 10),
+            const SizedBox(height: 18),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 36),
+                child: Center(
+                  child: CircularProgressIndicator(color: AppTheme.primary),
+                ),
+              )
+            else ...[
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 1.35,
+                children: [
+                  _StatCard(
+                    label: 'Total Sales',
+                    value: _stats['totalSales'].toString(),
+                    icon: Icons.payments_outlined,
+                    color: AppTheme.primary,
+                  ),
+                  _StatCard(
+                    label: 'Total Orders',
+                    value: _stats['totalOrders'].toString(),
+                    icon: Icons.shopping_bag_outlined,
+                    color: Colors.blue.shade600,
+                  ),
+                  _StatCard(
+                    label: 'Active Customers',
+                    value: _stats['activeCustomers'].toString(),
+                    icon: Icons.people_outline,
+                    color: Colors.green.shade600,
+                  ),
+                  _StatCard(
+                    label: 'Live Products',
+                    value: _stats['liveProducts'].toString(),
+                    icon: Icons.inventory_2_outlined,
+                    color: Colors.amber.shade700,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _ToggleSectionCard(
+                title: 'Revenue Trend',
+                subtitle: 'Total earnings • $_dateFilter view',
+                expanded: _showRevenueTrend,
+                onToggle: () =>
+                    setState(() => _showRevenueTrend = !_showRevenueTrend),
+                child: _SimpleLineChart(
+                  data: _revenueSeries,
+                  valueKey: 'revenue',
+                  emptyLabel: 'No revenue data for this period',
+                ),
+              ),
+              const SizedBox(height: 12),
+              _ToggleSectionCard(
+                title: 'User Growth',
+                subtitle: 'New registrations • $_dateFilter view',
+                expanded: _showUserGrowth,
+                onToggle: () =>
+                    setState(() => _showUserGrowth = !_showUserGrowth),
+                child: _SimpleLineChart(
+                  data: _monthlySignups,
+                  valueKey: 'hits',
+                  emptyLabel: 'No signup data for this period',
+                ),
+              ),
+              const SizedBox(height: 12),
+              _Panel(
+                title: 'Orders by Location',
+                child: _topLocations.isEmpty
+                    ? const _MutedCenter(text: 'No location data yet')
+                    : Column(
+                        children: _topLocations.map((loc) {
+                          final maxCount = _topLocations
+                              .map((item) => _toInt(item['count']))
+                              .fold<int>(1, math.max);
+                          final count = _toInt(loc['count']);
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        (loc['city'] ?? 'Unknown').toString(),
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppTheme.charcoal,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '$count orders',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: AppTheme.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 5),
+                                LinearProgressIndicator(
+                                  value: maxCount > 0 ? count / maxCount : 0,
+                                  minHeight: 7,
+                                  color: AppTheme.rust,
+                                  backgroundColor: const Color(0xFFF2ECE5),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+              ),
+              const SizedBox(height: 12),
+              _Panel(
+                title: 'Order Status Breakdown',
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _StatusChip('Pending', _toInt(_statusBreakdown['pending'])),
+                    _StatusChip(
+                      'Processing',
+                      _toInt(_statusBreakdown['processing']),
+                    ),
+                    _StatusChip('Shipped', _toInt(_statusBreakdown['shipped'])),
+                    _StatusChip(
+                      'Completed',
+                      _toInt(_statusBreakdown['completed']),
+                    ),
+                    _StatusChip(
+                      'Cancelled',
+                      _toInt(_statusBreakdown['cancelled']),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _Panel(
+                title: 'Top Selling Products',
+                child: _topProducts.isEmpty
+                    ? const _MutedCenter(
+                        text: 'No product sales in this period',
+                      )
+                    : Column(
+                        children: _topProducts.take(5).map((product) {
+                          final maxSales = _topProducts
+                              .map((item) => _num(item['sales']))
+                              .fold<double>(1, math.max);
+                          final sales = _num(product['sales']);
+                          final revenue = _num(product['revenue']);
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7F6F2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    (product['name'] ?? 'Unknown').toString(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                      color: AppTheme.charcoal,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    (product['category'] ?? 'Other').toString(),
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: AppTheme.textMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  LinearProgressIndicator(
+                                    value: maxSales > 0 ? sales / maxSales : 0,
+                                    minHeight: 6,
+                                    color: AppTheme.rust,
+                                    backgroundColor: const Color(0xFFE3DFD7),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        '${sales.toInt()} sold',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppTheme.charcoal,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        '₱${revenue.toStringAsFixed(0)}',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppTheme.rust,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+              ),
+              const SizedBox(height: 12),
+              _Panel(
+                title: 'Top Categories',
+                child: _topCategories.isEmpty
+                    ? const _MutedCenter(text: 'No category data yet')
+                    : Column(
+                        children: [
+                          SizedBox(
+                            height: 220,
+                            child: PieChart(
+                              PieChartData(
+                                centerSpaceRadius: 48,
+                                sectionsSpace: 3,
+                                sections: _topCategories.asMap().entries.map((
+                                  entry,
+                                ) {
+                                  final index = entry.key;
+                                  final item = entry.value;
+                                  final colors = [
+                                    const Color(0xFFC0422A),
+                                    const Color(0xFFE56D4B),
+                                    const Color(0xFF8C7B70),
+                                    const Color(0xFFB3A499),
+                                    const Color(0xFFE5DDD5),
+                                  ];
+                                  return PieChartSectionData(
+                                    value: _num(item['value']),
+                                    color: colors[index % colors.length],
+                                    radius: 22,
+                                    showTitle: false,
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: _topCategories.asMap().entries.map((
+                              entry,
+                            ) {
+                              final index = entry.key;
+                              final item = entry.value;
+                              final colors = [
+                                const Color(0xFFC0422A),
+                                const Color(0xFFE56D4B),
+                                const Color(0xFF8C7B70),
+                                const Color(0xFFB3A499),
+                                const Color(0xFFE5DDD5),
+                              ];
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: colors[index % colors.length],
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    '${item['name']} (${_toInt(item['value'])})',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.charcoal,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Panel extends StatelessWidget {
+  final String title;
+  final Widget child;
+
+  const _Panel({required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.borderLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.charcoal,
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
         ],
       ),
     );
   }
 }
 
-class _TrendCard extends StatelessWidget {
+class _ToggleSectionCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  const _ToggleSectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      title: title,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: AppTheme.textMuted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: onToggle,
+                icon: Icon(
+                  expanded
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  size: 18,
+                ),
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFFF7F6F2),
+                ),
+              ),
+            ],
+          ),
+          if (expanded) ...[const SizedBox(height: 10), child],
+        ],
+      ),
+    );
+  }
+}
+
+class _SimpleLineChart extends StatelessWidget {
+  final List<Map<String, dynamic>> data;
+  final String valueKey;
+  final String emptyLabel;
+
+  const _SimpleLineChart({
+    required this.data,
+    required this.valueKey,
+    required this.emptyLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) {
+      return SizedBox(
+        height: 180,
+        child: Center(
+          child: Text(
+            emptyLabel,
+            style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          ),
+        ),
+      );
+    }
+
+    final spots = data.asMap().entries.map((entry) {
+      final index = entry.key.toDouble();
+      final value = (entry.value[valueKey] as num?)?.toDouble() ?? 0;
+      return FlSpot(index, value);
+    }).toList();
+
+    final maxY = data
+        .map((item) => (item[valueKey] as num?)?.toDouble() ?? 0)
+        .fold<double>(1, math.max);
+
+    return SizedBox(
+      height: 220,
+      child: LineChart(
+        LineChartData(
+          minX: 0,
+          maxX: math.max(data.length - 1, 1).toDouble(),
+          minY: 0,
+          maxY: maxY <= 0 ? 1 : maxY * 1.2,
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (value) => const FlLine(
+              color: Color(0xFFE5DDD5),
+              strokeWidth: 1,
+              dashArray: [4, 4],
+            ),
+          ),
+          borderData: FlBorderData(show: false),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 34,
+                getTitlesWidget: (value, meta) => Text(
+                  _compactAxisNum(value),
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: AppTheme.textMuted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 28,
+                getTitlesWidget: (value, meta) {
+                  final index = value.toInt();
+                  if (index < 0 || index >= data.length) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      (data[index]['name'] ?? '').toString(),
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: AppTheme.textMuted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              isCurved: true,
+              curveSmoothness: 0.35,
+              color: AppTheme.rust,
+              barWidth: 3,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.rust.withValues(alpha: 0.20),
+                    AppTheme.rust.withValues(alpha: 0.0),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
   final String label;
   final String value;
-  final String change;
   final IconData icon;
   final Color color;
 
-  const _TrendCard({
+  const _StatCard({
     required this.label,
     required this.value,
-    required this.change,
     required this.icon,
     required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isUp = change.startsWith('+');
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.borderLight),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 18),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isUp ? Colors.green.shade50 : Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      isUp ? Icons.arrow_outward : Icons.arrow_downward,
-                      size: 8,
-                      color: isUp ? Colors.green.shade700 : Colors.red.shade700,
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      change,
-                      style: TextStyle(
-                        fontSize: 8,
-                        fontWeight: FontWeight.w900,
-                        color: isUp ? Colors.green.shade700 : Colors.red.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: GoogleFonts.playfairDisplay(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.charcoal,
-                ),
-              ),
-              Text(
-                label,
-                style: GoogleFonts.outfit(
-                  fontSize: 8,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                  color: AppTheme.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WeeklyEarningsBanner extends StatelessWidget {
-  const _WeeklyEarningsBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.borderLight),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Earning Statistics',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                  Text(
-                    'Revenue across current week cycle',
-                    style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
-                  ),
-                ],
-              ),
-              Icon(Icons.query_stats_rounded, color: AppTheme.textMuted, size: 20),
-            ],
-          ),
-          const SizedBox(height: 32),
-          SizedBox(
-            height: 200,
-            child: BarChart(
-              BarChartData(
-                alignment: BarChartAlignment.spaceAround,
-                maxY: 7000,
-                barTouchData: BarTouchData(enabled: false),
-                titlesData: FlTitlesData(
-                  show: true,
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (val, meta) {
-                        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                        if (val.toInt() >= 0 && val.toInt() < days.length) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              days[val.toInt()],
-                              style: const TextStyle(
-                                color: Color(0xFF8C7B70),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 10,
-                              ),
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40,
-                      getTitlesWidget: (val, meta) {
-                        return Text(
-                          '₱${(val / 1000).toInt()}k',
-                          style: const TextStyle(
-                            color: Color(0xFF8C7B70),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  getDrawingHorizontalLine: (val) => const FlLine(
-                    color: Color(0xFFE5DDD5),
-                    strokeWidth: 1,
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                barGroups: [
-                  _makeGroupData(0, 4200),
-                  _makeGroupData(1, 3800),
-                  _makeGroupData(2, 5100),
-                  _makeGroupData(3, 4600),
-                  _makeGroupData(4, 5900),
-                  _makeGroupData(5, 6400),
-                  _makeGroupData(6, 5200),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  BarChartGroupData _makeGroupData(int x, double y) {
-    return BarChartGroupData(
-      x: x,
-      barRods: [
-        BarChartRodData(
-          toY: y,
-          color: AppTheme.primary,
-          width: 22,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-          backDrawRodData: BackgroundBarChartRodData(
-            show: true,
-            toY: 7000,
-            color: const Color(0xFFF9F6F2),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TargetAndRegionSection extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final isWide = constraints.maxWidth > 600;
-      return Flex(
-        direction: isWide ? Axis.horizontal : Axis.vertical,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Sales Target (Donut)
-          Expanded(
-            flex: isWide ? 1 : 0,
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppTheme.borderLight),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Sales Target', style: TextStyle(fontWeight: FontWeight.w800)),
-                  const Text('Daily reach index', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
-                  const SizedBox(height: 24),
-                  Center(
-                    child: SizedBox(
-                      height: 140,
-                      width: 140,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          PieChart(
-                            PieChartData(
-                              sectionsSpace: 4,
-                              centerSpaceRadius: 50,
-                              sections: [
-                                PieChartSectionData(
-                                  value: 78,
-                                  color: AppTheme.primary,
-                                  radius: 12,
-                                  showTitle: false,
-                                ),
-                                PieChartSectionData(
-                                  value: 22,
-                                  color: const Color(0xFFF3F4F6),
-                                  radius: 12,
-                                  showTitle: false,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '78%',
-                                style: GoogleFonts.playfairDisplay(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const Text(
-                                'TARGET META',
-                                style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 1),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  _TargetRow(label: 'Daily Goal', amount: '₱45,000', color: AppTheme.primary),
-                  const SizedBox(height: 8),
-                  _TargetRow(label: 'Weekly Forecast', amount: '₱320,000', color: const Color(0xFFD4B896)),
-                ],
-              ),
-            ),
-          ),
-          if (isWide) const SizedBox(width: 24) else const SizedBox(height: 24),
-          // Regional Distribution
-          Expanded(
-            flex: isWide ? 1 : 0,
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppTheme.borderLight),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Top Regions', style: TextStyle(fontWeight: FontWeight.w800)),
-                  const Text('Customers by location', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
-                  const SizedBox(height: 24),
-                  _RegionRow(label: 'Manila', count: 420, total: 500),
-                  _RegionRow(label: 'Quezon City', count: 310, total: 500),
-                  _RegionRow(label: 'Lumban', count: 280, total: 500),
-                  _RegionRow(label: 'Makati', count: 190, total: 500),
-                  _RegionRow(label: 'Cebu City', count: 150, total: 500),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-    });
-  }
-}
-
-class _TargetRow extends StatelessWidget {
-  final String label;
-  final String amount;
-  final Color color;
-  const _TargetRow({required this.label, required this.amount, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.textMuted)),
-          ],
-        ),
-        Text(amount, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-      ],
-    );
-  }
-}
-
-class _RegionRow extends StatelessWidget {
-  final String label;
-  final int count;
-  final int total;
-  const _RegionRow({required this.label, required this.count, required this.total});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
-              Text('$count', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 16, color: color),
+              ),
+              const Spacer(),
+              const Icon(Icons.brightness_1, size: 7, color: Color(0xFF4ADE80)),
             ],
           ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(100),
-            child: LinearProgressIndicator(
-              value: count / total,
-              backgroundColor: const Color(0xFFF9F6F2),
-              color: AppTheme.primary,
-              minHeight: 6,
+          const Spacer(),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.charcoal,
+                height: 1,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.textMuted,
+              letterSpacing: 0.8,
             ),
           ),
         ],
@@ -687,99 +939,39 @@ class _RegionRow extends StatelessWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  final String text;
-  const _SectionLabel({required this.text});
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final int value;
 
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: GoogleFonts.outfit(
-        fontSize: 10,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 2.0,
-        color: AppTheme.textMuted,
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _EmptyState({required this.icon, required this.text});
+  const _StatusChip(this.label, this.value);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 40),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppTheme.borderLight),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 32, color: AppTheme.textMuted.withValues(alpha: 0.2)),
-          const SizedBox(height: 12),
-          Text(text, style: const TextStyle(color: AppTheme.textMuted, fontSize: 11, fontStyle: FontStyle.italic)),
-        ],
-      ),
-    );
-  }
-}
-
-class _SellerRegistryCard extends StatelessWidget {
-  final Map<String, dynamic> seller;
-  final Function(String) onApprove;
-  const _SellerRegistryCard({required this.seller, required this.onApprove});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppTheme.borderLight),
+        color: const Color(0xFFF7F6F2),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.background,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.person_outline, color: AppTheme.primary),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  (seller['shopName'] ?? seller['name']).toString().toUpperCase(),
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                ),
-                Text(
-                  'Artisan Registry Request',
-                  style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
-                ),
-              ],
+          Text(
+            '$value',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.charcoal,
             ),
           ),
-          ElevatedButton(
-            onPressed: () => onApprove(seller['_id'] ?? seller['id']),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: AppTheme.textMuted,
+              fontWeight: FontWeight.w700,
             ),
-            child: const Text('VERIFY', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white)),
           ),
         ],
       ),
@@ -787,82 +979,20 @@ class _SellerRegistryCard extends StatelessWidget {
   }
 }
 
-class _ProductRegistryCard extends StatelessWidget {
-  final Map<String, dynamic> product;
-  final Function(String, String) onAction;
-  const _ProductRegistryCard({required this.product, required this.onAction});
+class _MutedCenter extends StatelessWidget {
+  final String text;
+
+  const _MutedCenter({required this.text});
 
   @override
   Widget build(BuildContext context) {
-    final seller = product['seller'] as Map? ?? {};
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppTheme.borderLight),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: AppTheme.background,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.image_outlined, color: AppTheme.textMuted),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product['name'].toString().toUpperCase(),
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      '₱${product['price']} • by ${seller['shopName'] ?? seller['name']}',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => onAction(product['_id'] ?? product['id'], 'approved'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.charcoal,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('APPROVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => onAction(product['_id'] ?? product['id'], 'rejected'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.primary,
-                    side: const BorderSide(color: AppTheme.primary),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('REJECT', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900)),
-                ),
-              ),
-            ],
-          ),
-        ],
+    return SizedBox(
+      height: 120,
+      child: Center(
+        child: Text(
+          text,
+          style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+        ),
       ),
     );
   }

@@ -51,6 +51,30 @@ const Product = sequelize.define('Product', {
       key: 'id',
     },
   },
+  gcashNumber: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  gcashQrCode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  mayaNumber: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  mayaQrCode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  allowGcash: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+  allowMaya: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
   views: {
     type: DataTypes.INTEGER,
     defaultValue: 0,

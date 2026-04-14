@@ -42,7 +42,7 @@ export default function CheckoutPage() {
 
   // Checkout State
   const [address, setAddress] = useState({
-    name: "",
+    recipientName: "",
     phone: "",
     houseNo: "",
     street: "",
@@ -71,6 +71,11 @@ export default function CheckoutPage() {
   const [addrMapPicker, setAddrMapPicker] = useState(false);
   const [addrLoading, setAddrLoading] = useState(false);
 
+  const getCustomerToken = () => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("customer_token") || localStorage.getItem("token");
+  };
+
   const parsePrice = React.useCallback((value) => {
     if (typeof value === "number") return value;
     return parseFloat(String(value || "0").replace(/[^0-9.]/g, "")) || 0;
@@ -85,9 +90,10 @@ export default function CheckoutPage() {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = getCustomerToken();
     if (!token && currentStep !== 3) {
       window.location.href = "/login?redirect=" + encodeURIComponent(window.location.pathname + window.location.search);
+      return;
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -112,7 +118,7 @@ export default function CheckoutPage() {
       const defaultAddr = data.find(a => a.isDefault) || data[0];
       if (defaultAddr) {
         setAddress({
-          name: defaultAddr.recipientName,
+          recipientName: defaultAddr.recipientName,
           phone: defaultAddr.phone,
           houseNo: defaultAddr.houseNo,
           street: defaultAddr.street,
@@ -132,6 +138,21 @@ export default function CheckoutPage() {
     fetchSavedAddresses();
 
   }, [currentStep]);
+
+  // Adjust payment method based on product settings when items are loaded
+  useEffect(() => {
+    if (cartItems.length > 0) {
+      const firstItem = cartItems[0];
+      const allowGcash = firstItem.allowGcash !== false; // handle null/undefined as true
+      const allowMaya = firstItem.allowMaya !== false;
+
+      if (!allowGcash && paymentMethod === "GCash" && allowMaya) {
+        setPaymentMethod("Maya");
+      } else if (!allowMaya && paymentMethod === "Maya" && allowGcash) {
+        setPaymentMethod("GCash");
+      }
+    }
+  }, [cartItems, paymentMethod]);
 
   const openAddrForm = (addr = null) => {
     if (addr) {
@@ -174,7 +195,7 @@ export default function CheckoutPage() {
 
   const selectAddress = (addr) => {
     setAddress({
-      name: addr.recipientName,
+      recipientName: addr.recipientName,
       phone: addr.phone,
       houseNo: addr.houseNo,
       street: addr.street,
@@ -195,17 +216,25 @@ export default function CheckoutPage() {
   const maxDays = cartItems.reduce((max, item) => Math.max(max, parseInt(item.shippingDays || 3)), 0);
   const total = subtotal + shipping;
 
-  const checkoutSeller = cartItems[0]?.seller || cartItems[0]?.product?.seller;
-  const sellerGcashNumber = checkoutSeller?.gcashNumber || "Please ask seller for GCash #";
-  const sellerGcashName = checkoutSeller?.name || "LumbaRong Partner Seller";
-  const sellerGcashQrCode = checkoutSeller?.gcashQrCode;
-
   const isGcashPayment = paymentMethod === "GCash";
+  const isMayaPayment = paymentMethod === "Maya";
   const isBuyNowMode = mode === "buy_now";
+
+  const firstItem = cartItems[0];
+  const currentSeller = firstItem?.seller || firstItem?.product?.seller;
+  
+  // Prioritize product-specific payment details, then fallback to seller profile
+  const sellerGcashNumber = firstItem?.gcashNumber || currentSeller?.gcashNumber || "Ask Seller";
+  const sellerGcashName = currentSeller?.name || "Artisan Workshop";
+  const sellerGcashQrCode = firstItem?.gcashQrCode || currentSeller?.gcashQrCode;
+  
+  const sellerMayaNumber = firstItem?.mayaNumber || currentSeller?.mayaNumber || "Ask Seller";
+  const sellerMayaName = currentSeller?.name || "Artisan Workshop";
+  const sellerMayaQrCode = firstItem?.mayaQrCode || currentSeller?.mayaQrCode;
 
   const handleNext = () => {
     if (currentStep === 1) {
-      const required = ["name", "phone", "houseNo", "street", "barangay", "city", "province", "postalCode"];
+      const required = ["recipientName", "phone", "houseNo", "street", "barangay", "city", "province", "postalCode"];
       const missing = required.filter(field => !address[field]);
       if (missing.length > 0) {
         setShowValidation(true);
@@ -213,7 +242,7 @@ export default function CheckoutPage() {
       }
       setCurrentStep(2);
     } else if (currentStep === 2) {
-      if (isGcashPayment) {
+      if (isGcashPayment || isMayaPayment) {
         const digitsOnly = gcashRef.replace(/\D/g, "");
         if (!digitsOnly || digitsOnly.length < 8) {
           alert("GCash reference must be at least 8 digits long.");
@@ -246,10 +275,10 @@ export default function CheckoutPage() {
     // Lazada-style: Ensure all address fields are caught
     formData.append("shippingAddress", JSON.stringify(address));
     formData.append("paymentMethod", paymentMethod);
-    if (isGcashPayment) {
+    if (isGcashPayment || isMayaPayment) {
       formData.append("paymentReference", gcashRef);
     }
-    if (isGcashPayment && screenshot) {
+    if ((isGcashPayment || isMayaPayment) && screenshot) {
       formData.append("paymentProof", screenshot);
     }
 
@@ -263,7 +292,7 @@ export default function CheckoutPage() {
         if (!existing) {
           try {
             await api.post("/addresses", {
-              recipientName: address.name,
+              recipientName: address.recipientName,
               phone: address.phone,
               houseNo: address.houseNo,
               street: address.street,
@@ -404,7 +433,7 @@ export default function CheckoutPage() {
                         </div>
                       </div>
 
-                      {!isNewAddress && address.name ? (
+                      {!isNewAddress && address.recipientName ? (
                         <div className="bg-[var(--cream)]/30 border border-[var(--rust)]/10 rounded-3xl p-8 flex items-start gap-6 group transition-all hover:bg-white hover:shadow-lg">
                           <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-sm shrink-0 border border-[var(--rust)]/5">
                             <MapPin className="w-6 h-6 text-[var(--rust)]" />
@@ -414,7 +443,7 @@ export default function CheckoutPage() {
                               <span className="text-[10px] font-bold text-[var(--rust)] uppercase tracking-[0.2em]">Fulfillment Node Active</span>
 
                             </div>
-                            <div className="text-xl font-serif font-bold text-[var(--charcoal)]">{address.name}</div>
+                            <div className="text-xl font-serif font-bold text-[var(--charcoal)]">{address.recipientName}</div>
                             <div className="text-xs font-bold text-[var(--muted)] tracking-widest mb-2 pd-meta-val">{address.phone}</div>
                             <p className="text-sm text-[var(--muted)] leading-relaxed italic">
                               {address.houseNo} {address.street}, {address.barangay},<br />
@@ -424,7 +453,7 @@ export default function CheckoutPage() {
                         </div>
                       ) : (
                         <div className={`grid grid-cols-1 md:grid-cols-2 ${isBuyNowMode ? 'gap-6 pt-2' : 'gap-8 pt-4'}`}>
-                          <InputGroup compact={isBuyNowMode} label="Full Name" placeholder="Enter recipient name" value={address.name} onChange={(e) => setAddress({ ...address, name: e.target.value.slice(0, 50) })} icon={<UserIcon className="w-4 h-4" />} />
+                          <InputGroup compact={isBuyNowMode} label="Full Name" placeholder="Enter recipient name" value={address.recipientName} onChange={(e) => setAddress({ ...address, recipientName: e.target.value.slice(0, 50) })} icon={<UserIcon className="w-4 h-4" />} />
                           <InputGroup compact={isBuyNowMode} label="Phone Number" placeholder="09XXXXXXXXX" value={address.phone} onChange={(e) => setAddress({ ...address, phone: e.target.value.replace(/\D/g, "").slice(0, 11) })} icon={<Phone className="w-4 h-4" />} />
 
                           <InputGroup compact={isBuyNowMode} label="House No. / Building" placeholder="Bldg/House Number" value={address.houseNo} onChange={(e) => setAddress({ ...address, houseNo: e.target.value.slice(0, 20) })} icon={<MapPin className="w-4 h-4" />} />
@@ -456,35 +485,28 @@ export default function CheckoutPage() {
                               )}
                             </button>
 
-                            <AnimatePresence>
-                              {showMap && (
-                                <motion.div
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: "auto" }}
-                                  exit={{ opacity: 0, height: 0 }}
-                                  transition={{ duration: 0.3 }}
-                                  className="overflow-hidden mt-4"
-                                >
-                                  <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--muted)] mb-3 ml-1">Interactive Heritage Map</div>
-                                  <LocationPickerMap
-                                    initialLat={address.latitude || 14.2952}
-                                    initialLng={address.longitude || 121.4647}
-                                    onLocationFound={({ lat, lng, address: geo }) => {
-                                      setAddress(prev => ({
-                                        ...prev,
-                                        latitude: lat,
-                                        longitude: lng,
-                                        street: geo.street || prev.street,
-                                        barangay: geo.barangay || prev.barangay,
-                                        city: geo.city || prev.city,
-                                        province: geo.province || prev.province,
-                                        postalCode: geo.postalCode || prev.postalCode,
-                                      }));
-                                    }}
-                                  />
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
+                            {showMap && (
+                              <div className="mt-4">
+                                <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--muted)] mb-3 ml-1">Interactive Heritage Map</div>
+                                <LocationPickerMap
+                                  initialLat={address.latitude || 14.2952}
+                                  initialLng={address.longitude || 121.4647}
+                                  onLocationFound={({ lat, lng, address: geo }) => {
+                                    setAddress(prev => ({
+                                      ...prev,
+                                      latitude: lat,
+                                      longitude: lng,
+                                      street: geo.street || prev.street,
+                                      barangay: geo.barangay || prev.barangay,
+                                      city: geo.city || prev.city,
+                                      province: geo.province || prev.province,
+                                      postalCode: geo.postalCode || prev.postalCode,
+                                    }));
+                                  }}
+                                  onConfirm={() => setShowMap(false)}
+                                />
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -505,65 +527,88 @@ export default function CheckoutPage() {
                         Payment Method
                       </h3>
 
-                      <div className={`grid grid-cols-1 md:grid-cols-2 ${isBuyNowMode ? 'gap-4 pt-1' : 'gap-6 pt-2'}`}>
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod("GCash")}
-                          className={`border-2 text-left transition-all shadow-sm ${isBuyNowMode ? 'rounded-2xl p-6' : 'rounded-3xl p-8'} ${paymentMethod === "GCash" ? 'border-blue-500 bg-blue-50/70 shadow-xl ring-4 ring-blue-100' : 'border-[var(--border)] bg-white hover:border-blue-300'}`}
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="space-y-3">
-                              <div className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-blue-700">GCash</div>
-                              <div className="font-serif text-2xl font-bold text-[var(--charcoal)]">Pay Online</div>
-                              <p className="text-xs font-medium text-[var(--muted)] leading-relaxed">Upload your transaction reference and payment screenshot before placing the order.</p>
+                      <div className={`grid grid-cols-1 md:grid-cols-2 ${isBuyNowMode ? 'gap-4 pt-4' : 'gap-6 pt-6'}`}>
+                        {(firstItem?.allowGcash !== false) && (
+                          <button
+                            type="button"
+                            onClick={() => setPaymentMethod("GCash")}
+                            className={`border-2 text-left transition-all relative overflow-hidden ${isBuyNowMode ? 'rounded-2xl p-6' : 'rounded-3xl p-8'} ${paymentMethod === "GCash" ? 'border-blue-500 bg-blue-50/10 shadow-xl ring-4 ring-blue-50' : 'border-[var(--border)] bg-white hover:border-blue-300'}`}
+                          >
+                            <div className="flex items-start justify-between gap-4 relative z-10">
+                              <div className="space-y-3">
+                                <div className="text-[9px] font-black uppercase tracking-[0.3em] text-blue-700">GCash</div>
+                                <div className="font-serif text-3xl font-bold text-[var(--charcoal)] leading-none">Pay with GCash</div>
+                                <p className="text-[10px] font-bold text-[var(--muted)]/60 leading-relaxed uppercase tracking-wider">Reference & proof of transfer</p>
+                              </div>
+                              <div className={`bg-blue-600 text-white flex items-center justify-center shadow-lg shrink-0 ${isBuyNowMode ? 'w-12 h-12 rounded-xl' : 'w-14 h-14 rounded-2xl'}`}>
+                                <CreditCard className="w-6 h-6" />
+                              </div>
                             </div>
-                            <div className={`bg-blue-600 text-white flex items-center justify-center shadow-lg shrink-0 ${isBuyNowMode ? 'w-12 h-12 rounded-xl' : 'w-14 h-14 rounded-2xl'}`}>
-                              <CreditCard className={`${isBuyNowMode ? 'w-5 h-5' : 'w-6 h-6'}`} />
-                            </div>
-                          </div>
-                        </button>
+                            {paymentMethod === "GCash" && (
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 -translate-y-1/2 translate-x-1/2 rounded-full ring-4 ring-white" />
+                            )}
+                          </button>
+                        )}
 
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod("Cash on Delivery")}
-                          className={`border-2 text-left transition-all shadow-sm ${isBuyNowMode ? 'rounded-2xl p-6' : 'rounded-3xl p-8'} ${paymentMethod === "Cash on Delivery" ? 'border-[var(--rust)] bg-[var(--cream)] shadow-xl ring-4 ring-[var(--rust)]/10' : 'border-[var(--border)] bg-white hover:border-[var(--rust)]/40'}`}
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="space-y-3">
-                              <div className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-[var(--rust)]">Cash on Delivery</div>
-                              <div className="font-serif text-2xl font-bold text-[var(--charcoal)]">Pay on Arrival</div>
-                              <p className="text-xs font-medium text-[var(--muted)] leading-relaxed">Settle the payment when the item is delivered. No upload or reference needed.</p>
+                        {(firstItem?.allowMaya !== false) && (
+                          <button
+                            type="button"
+                            onClick={() => setPaymentMethod("Maya")}
+                            className={`border-2 text-left transition-all relative overflow-hidden ${isBuyNowMode ? 'rounded-2xl p-6' : 'rounded-3xl p-8'} ${paymentMethod === "Maya" ? 'border-teal-500 bg-teal-50/10 shadow-xl ring-4 ring-teal-50' : 'border-[var(--border)] bg-white hover:border-teal-300'}`}
+                          >
+                            <div className="flex items-start justify-between gap-4 relative z-10">
+                              <div className="space-y-3">
+                                <div className="text-[9px] font-black uppercase tracking-[0.3em] text-teal-700">Maya</div>
+                                <div className="font-serif text-3xl font-bold text-[var(--charcoal)] leading-none">Pay with Maya</div>
+                                <p className="text-[10px] font-bold text-[var(--muted)]/60 leading-relaxed uppercase tracking-wider">Reference & proof of transfer</p>
+                              </div>
+                              <div className={`bg-teal-600 text-white flex items-center justify-center shadow-lg shrink-0 ${isBuyNowMode ? 'w-12 h-12 rounded-xl' : 'w-14 h-14 rounded-2xl'}`}>
+                                <CreditCard className="w-6 h-6" />
+                              </div>
                             </div>
-                            <div className={`bg-[var(--rust)] text-white flex items-center justify-center shadow-lg shrink-0 ${isBuyNowMode ? 'w-12 h-12 rounded-xl' : 'w-14 h-14 rounded-2xl'}`}>
-                              <Truck className={`${isBuyNowMode ? 'w-5 h-5' : 'w-6 h-6'}`} />
-                            </div>
-                          </div>
-                        </button>
+                            {paymentMethod === "Maya" && (
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-teal-600/5 -translate-y-1/2 translate-x-1/2 rounded-full ring-4 ring-white" />
+                            )}
+                          </button>
+                        )}
                       </div>
 
-                      {isGcashPayment ? (
+                      {(isGcashPayment || isMayaPayment) && (
                         <>
-                          <div className={`bg-blue-50/50 border border-blue-100 flex flex-col md:flex-row items-center ${isBuyNowMode ? 'rounded-xl p-5 gap-5' : 'rounded-2xl p-6 gap-6'}`}>
-                            <div className={`bg-white shadow-lg overflow-hidden flex items-center justify-center p-2 border border-blue-200 ring-4 ring-blue-50/50 shrink-0 ${isBuyNowMode ? 'w-20 h-20 rounded-xl' : 'w-24 h-24 rounded-2xl'}`}>
-                              {sellerGcashQrCode ? (
-                                <img src={sellerGcashQrCode} alt="Seller GCash QR Code" className="w-full h-full object-contain rounded-lg" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                          <div className={`bg-white border-2 border-[var(--border)] relative overflow-hidden group shadow-lg ${isBuyNowMode ? 'rounded-2xl p-6 mt-6' : 'rounded-3xl p-8 mt-10'}`}>
+                          <div className={`absolute top-0 left-0 w-1 h-full bg-${isGcashPayment ? 'blue' : 'teal'}-600`} />
+                          
+                          <div className="flex flex-col md:flex-row items-center gap-8">
+                            <div className={`bg-white shadow-2xl overflow-hidden flex items-center justify-center p-2.5 border-2 border-${isGcashPayment ? 'blue' : 'teal'}-100 ring-8 ring-${isGcashPayment ? 'blue' : 'teal'}-50 shrink-0 relative group/qr ${isBuyNowMode ? 'w-24 h-24 rounded-2xl' : 'w-28 h-28 rounded-3xl'}`}>
+                              {(isGcashPayment ? sellerGcashQrCode : sellerMayaQrCode) ? (
+                                <img src={isGcashPayment ? sellerGcashQrCode : sellerMayaQrCode} alt="Seller QR Code" className="w-full h-full object-contain rounded-xl" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
                               ) : null}
-                              <Scan className="w-10 h-10 text-blue-200" style={{ display: sellerGcashQrCode ? 'none' : 'block' }} />
+                              <Scan className={`w-10 h-10 text-${isGcashPayment ? 'blue' : 'teal'}-100`} style={{ display: (isGcashPayment ? sellerGcashQrCode : sellerMayaQrCode) ? 'none' : 'block' }} />
                             </div>
-                            <div className="flex-1 space-y-2.5 text-center md:text-left">
+                            
+                            <div className="flex-1 space-y-4 text-center md:text-left">
                               <div>
-                                <div className="text-[9px] font-extrabold text-blue-600 uppercase tracking-[0.2em] mb-1">Seller GCash Destination</div>
-                                <div className={`font-sans font-bold text-blue-900 tracking-tight pd-meta-val ${isBuyNowMode ? 'text-xl' : 'text-2xl'}`}>{sellerGcashNumber}</div>
-                                <div className="text-[9px] font-bold text-blue-800 opacity-70 uppercase tracking-widest mt-0.5 leading-snug">{sellerGcashName}</div>
+                                <div className={`text-[9px] font-black text-${isGcashPayment ? 'blue' : 'teal'}-600 uppercase tracking-[0.3em] mb-2`}>Seller {isGcashPayment ? 'GCash' : 'Maya'} Destination</div>
+                                <div className={`font-serif font-black text-${isGcashPayment ? 'blue' : 'teal'}-900 tracking-tight leading-none break-all ${isBuyNowMode ? 'text-2xl' : 'text-3xl'}`}>
+                                  {isGcashPayment ? sellerGcashNumber : sellerMayaNumber}
+                                </div>
+                                <div className={`text-[10px] font-black text-${isGcashPayment ? 'blue' : 'teal'}-800/60 uppercase tracking-widest mt-2 leading-snug`}>
+                                  Recipient: {isGcashPayment ? sellerGcashName : sellerMayaName}
+                                </div>
                               </div>
-                              <div className={`bg-white border border-blue-100 inline-block font-sans font-bold text-blue-900 rounded-lg shadow-sm ${isBuyNowMode ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'}`}>
-                                Due Amount: <span className="text-[var(--rust)]">₱<span className="pd-meta-val">{total.toLocaleString()}</span></span>
+                              
+                              <div className={`inline-flex items-center gap-3 bg-${isGcashPayment ? 'blue' : 'teal'}-50 border border-${isGcashPayment ? 'blue' : 'teal'}-100 rounded-xl px-4 py-2`}>
+                                <div className={`w-2 h-2 rounded-full bg-${isGcashPayment ? 'blue' : 'teal'}-500 animate-pulse`} />
+                                <span className={`text-[10px] font-bold text-${isGcashPayment ? 'blue' : 'teal'}-900 uppercase tracking-widest`}>
+                                  Due Amount: <span className="text-[var(--rust)]">₱<span className="pd-meta-val">{total.toLocaleString()}</span></span>
+                                </span>
                               </div>
                             </div>
                           </div>
+                        </div>
 
                           <div className={`grid grid-cols-1 md:grid-cols-2 ${isBuyNowMode ? 'gap-6 pt-2' : 'gap-10 pt-6'}`}>
-                            <InputGroup compact={isBuyNowMode} label="GCash Reference No." placeholder="Enter transaction digits..." value={gcashRef} onChange={(e) => setGcashRef(e.target.value.replace(/\D/g, "").slice(0, 16))} icon={<Lock className="w-4 h-4" />} />
+                            <InputGroup compact={isBuyNowMode} label={`${isGcashPayment ? 'GCash' : 'Maya'} Reference No.`} placeholder="Enter transaction digits..." value={gcashRef} onChange={(e) => setGcashRef(e.target.value.replace(/\D/g, "").slice(0, 16))} icon={<Lock className="w-4 h-4" />} />
                             <div className="space-y-4">
                               <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--muted)] ml-1">Fulfillment Proof Screenshot</label>
                               <button
@@ -586,17 +631,6 @@ export default function CheckoutPage() {
                             </div>
                           </div>
                         </>
-                      ) : (
-                        <div className={`border border-[var(--rust)]/10 bg-[var(--cream)]/60 flex flex-col md:flex-row items-start gap-6 ${isBuyNowMode ? 'rounded-2xl p-6' : 'rounded-3xl p-10'}`}>
-                          <div className={`bg-[var(--rust)] text-white flex items-center justify-center shadow-lg shrink-0 ${isBuyNowMode ? 'w-14 h-14 rounded-xl' : 'w-16 h-16 rounded-2xl'}`}>
-                            <Truck className={`${isBuyNowMode ? 'w-7 h-7' : 'w-8 h-8'}`} />
-                          </div>
-                          <div className="space-y-3">
-                            <div className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-[var(--rust)]">Cash on Delivery Selected</div>
-                            <div className={`font-serif font-bold text-[var(--charcoal)] tracking-tight ${isBuyNowMode ? 'text-[1.75rem]' : 'text-3xl'}`}>Prepare PHP <span className="pd-meta-val">{total.toLocaleString()}</span> upon delivery</div>
-                            <p className="text-sm text-[var(--muted)] leading-relaxed italic">Your order will be placed immediately and paid when it arrives. Keep your mobile number available so the courier can confirm delivery.</p>
-                          </div>
-                        </div>
                       )}
                     </motion.div>
                   )}
@@ -699,10 +733,10 @@ export default function CheckoutPage() {
 
               <div className={`flex flex-col sm:flex-row ${isBuyNowMode ? 'gap-4 pt-2' : 'gap-6 pt-6'}`}>
                 <Link href="/orders" className="btn-primary px-12 py-5 shadow-2xl flex items-center justify-center gap-3 group ring-8 ring-[var(--rust)]/10">
-                  Registry Track Order <History className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                  See My order <History className="w-5 h-5 group-hover:rotate-12 transition-transform" />
                 </Link>
                 <Link href="/home" className="px-12 py-5 font-bold uppercase text-[10px] tracking-widest bg-white border-2 border-[var(--border)] rounded-2xl hover:border-[var(--rust)] hover:text-[var(--rust)] transition-all flex items-center justify-center gap-3 shadow-lg">
-                  Explore More Archives <ShoppingCart className="w-5 h-5" />
+                  Back to Shop <ShoppingCart className="w-5 h-5" />
                 </Link>
               </div>
 
@@ -739,7 +773,7 @@ export default function CheckoutPage() {
                 <div className="space-y-3 bg-red-50/50 p-8 rounded-3xl text-left border border-red-100/50 inline-block w-full">
                   {currentStep === 1 ? (
                     <>
-                      {!address.name && <ValidationError label="Full Name" />}
+                      {!address.recipientName && <ValidationError label="Full Name" />}
                       {!address.phone && <ValidationError label="Phone Number" />}
                       {!address.houseNo && <ValidationError label="House No." />}
                       {!address.street && <ValidationError label="Street" />}
@@ -750,8 +784,8 @@ export default function CheckoutPage() {
                     </>
                   ) : (
                     <>
-                      {isGcashPayment && !gcashRef && <ValidationError label="Transaction Reference Hash" />}
-                      {isGcashPayment && !screenshot && <ValidationError label="Digital Payment Screenshot Proof" />}
+                      {(isGcashPayment || isMayaPayment) && !gcashRef && <ValidationError label={`${isGcashPayment ? 'GCash' : 'Maya'} Reference Hash`} />}
+                      {(isGcashPayment || isMayaPayment) && !screenshot && <ValidationError label={`Digital ${isGcashPayment ? 'GCash' : 'Maya'} Screenshot Proof`} />}
                     </>
                   )}
                 </div>
@@ -879,31 +913,28 @@ export default function CheckoutPage() {
                             </label>
                           </div>
 
-                          <AnimatePresence>
-                            {addrMapPicker && (
-                              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                                <div className="pt-4 border-t border-[var(--border)]">
-                                  <label className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[var(--charcoal)] opacity-70 block mb-3">Interactive Heritage Map</label>
-                                  <LocationPickerMap
-                                    onLocationFound={({ lat, lng, address: geo }) => {
-                                      setAddrForm(prev => ({
-                                        ...prev,
-                                        latitude: lat,
-                                        longitude: lng,
-                                        street: geo.street || prev.street,
-                                        barangay: geo.barangay || prev.barangay,
-                                        city: geo.city || prev.city,
-                                        province: geo.province || prev.province,
-                                        postalCode: geo.postalCode || prev.postalCode,
-                                      }));
-                                    }}
-                                    initialLat={addrForm.latitude || 14.2952}
-                                    initialLng={addrForm.longitude || 121.4647}
-                                  />
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
+                          {addrMapPicker && (
+                            <div className="mt-4 pt-4 border-t border-[var(--border)]">
+                              <label className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[var(--charcoal)] opacity-70 block mb-3">Interactive Heritage Map</label>
+                              <LocationPickerMap
+                                onLocationFound={({ lat, lng, address: geo }) => {
+                                  setAddrForm(prev => ({
+                                    ...prev,
+                                    latitude: lat,
+                                    longitude: lng,
+                                    street: geo.street || prev.street,
+                                    barangay: geo.barangay || prev.barangay,
+                                    city: geo.city || prev.city,
+                                    province: geo.province || prev.province,
+                                    postalCode: geo.postalCode || prev.postalCode,
+                                  }));
+                                }}
+                                onConfirm={() => setAddrMapPicker(false)}
+                                initialLat={addrForm.latitude || 14.2952}
+                                initialLng={addrForm.longitude || 121.4647}
+                              />
+                            </div>
+                          )}
 
                           <button
                             type="submit"
@@ -937,7 +968,7 @@ function InputGroup({ label, placeholder, value, onChange, icon, disabled, compa
           disabled={disabled}
           className={`w-full bg-[var(--input-bg)] border-2 border-transparent outline-none focus:border-[var(--rust)] focus:bg-white transition-all font-bold shadow-inner ${compact ? 'pl-12 pr-4 py-4 rounded-xl text-sm' : 'pl-14 pr-6 py-5 rounded-2xl text-xs'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
           placeholder={placeholder}
-          value={value}
+          value={value || ""}
           onChange={onChange}
         />
       </div>
@@ -966,7 +997,7 @@ function AbInputGroup({ label, value, onChange, icon, placeholder }) {
         <div className="absolute top-1/2 -translate-y-1/2 left-4 text-[var(--muted)] group-focus-within:text-[var(--rust)] transition-colors">{icon}</div>
         <input
           type="text"
-          value={value}
+          value={value || ""}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           className="w-full bg-[var(--input-bg)] border-2 border-transparent outline-none focus:border-[var(--rust)] focus:bg-white transition-all font-bold shadow-inner pl-12 pr-4 py-4 rounded-xl text-sm"

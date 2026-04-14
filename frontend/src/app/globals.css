@@ -25,6 +25,16 @@
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
+  
+  /* Fluid Typography Scale */
+  --text-xs: clamp(0.7rem, 0.65rem + 0.25vw, 0.8rem);
+  --text-sm: clamp(0.8rem, 0.75rem + 0.25vw, 0.95rem);
+  --text-base: clamp(0.95rem, 0.9rem + 0.25vw, 1.1rem);
+  --text-lg: clamp(1.1rem, 1.05rem + 0.25vw, 1.3rem);
+  --text-xl: clamp(1.3rem, 1.2rem + 0.5vw, 1.6rem);
+  --text-2xl: clamp(1.6rem, 1.4rem + 1vw, 2.2rem);
+  --text-3xl: clamp(2.2rem, 1.8rem + 2vw, 3.5rem);
+  --text-4xl: clamp(3.2rem, 2.5rem + 4vw, 5.5rem);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -47,6 +57,7 @@
   font-family: var(--formal-font);
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 /* Sidebar brand name "LUMBARONG" (uses font-serif class) */
@@ -165,6 +176,23 @@ input::-webkit-credentials-auto-fill-button {
     border-left-width: 4px;
     border-color: var(--rust);
     background-color: rgba(192, 66, 42, 0.09);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .fluid-container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: clamp(1rem, 5vw, 5rem);
+    padding-right: clamp(1rem, 5vw, 5rem);
+    max-width: 1600px;
   }
 }
 

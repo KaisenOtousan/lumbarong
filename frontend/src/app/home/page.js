@@ -15,11 +15,10 @@ import {
   X
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { api, BACKEND_URL } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useSocket } from "@/context/SocketContext";
 import { normalizeProductImages, getProductImageSrc } from "@/lib/productImages";
-
-const categories = ["ALL", "FORMAL", "CASUAL", "TRADITIONAL", "MODERN", "CUSTOM"];
+import { fetchCategories, normalizeCategories } from "@/lib/categories";
 
 export default function ShopPage() {
   const router = useRouter();
@@ -28,35 +27,11 @@ export default function ShopPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [userRole, setUserRole] = useState(null);
-
-  const getPrimaryCategory = (product) => {
-    if (typeof product?.category === "string" && product.category.trim()) {
-      return product.category.trim();
-    }
-
-    if (Array.isArray(product?.categories) && product.categories.length > 0) {
-      return String(product.categories[0]).trim();
-    }
-
-    if (typeof product?.categories === "string" && product.categories.trim()) {
-      const raw = product.categories.trim();
-      if (raw.startsWith("[")) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return String(parsed[0]).trim();
-          }
-        } catch (_) {}
-      }
-      return raw;
-    }
-
-    return "";
-  };
+  const [categories, setCategories] = useState([]);
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem("user") || "{}");
+      const stored = JSON.parse(localStorage.getItem("customer_user") || "{}");
       setUserRole(stored.role || "customer");
     } catch (e) {
       setUserRole("customer");
@@ -83,6 +58,20 @@ export default function ShopPage() {
 
   useEffect(() => {
     fetchProducts();
+  }, []);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const data = await fetchCategories();
+        setCategories(normalizeCategories(data));
+      } catch (err) {
+        console.error("Failed to fetch categories from backend.");
+        setCategories([]);
+      }
+    };
+
+    loadCategories();
   }, []);
 
   useEffect(() => {
@@ -134,14 +123,14 @@ export default function ShopPage() {
         {/* Categories & Search Bar - Full Hero Layout */}
         <div className="flex flex-col items-center justify-center space-y-8 py-2">
 
-          {/* Categories Full Grid */}
-          <div className="w-full max-w-6xl">
-            <div className="flex flex-wrap items-center justify-center gap-3 py-4 px-6">
-              {categories.map((cat) => (
+          {/* Categories */}
+          <div className="w-full max-w-6xl px-4 flex justify-center">
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {["ALL", ...categories].map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={`px-6 py-2 rounded-full text-[11px] font-bold uppercase tracking-[0.1em] transition-all whitespace-nowrap border-2 ${activeCategory === cat
+                  className={`px-6 py-2 rounded-full text-[11px] font-bold uppercase tracking-[0.1em] transition-all border-2 ${activeCategory === cat
                       ? 'bg-[var(--rust)] border-[var(--rust)] text-white shadow-lg shadow-red-900/10'
                       : 'bg-white border-[var(--border)]/60 text-[var(--muted)] hover:border-[var(--rust)] hover:text-[var(--rust)]'
                     }`}
@@ -178,10 +167,14 @@ export default function ShopPage() {
             {loading ? (
               <div className="col-span-full py-32 text-center text-[var(--muted)] opacity-50 italic animate-pulse">Loading items...</div>
             ) : products.filter(p => {
-              const category = getPrimaryCategory(p);
-              const matchesCategory =
-                activeCategory === "ALL" ||
-                (category && category.toUpperCase() === activeCategory.toUpperCase());
+              const productCategories = Array.isArray(p.categories)
+                ? p.categories
+                : p.category
+                  ? [p.category]
+                  : [];
+              const matchesCategory = activeCategory === "ALL" || productCategories.some((category) => (
+                category?.toString().toLowerCase() === activeCategory.toLowerCase()
+              ));
               const s = searchQuery.toLowerCase();
               const matchesSearch = !searchQuery || (p.name?.toLowerCase().includes(s)) || (p.artisan?.toLowerCase().includes(s)) || (p.description?.toLowerCase().includes(s));
               return matchesCategory && matchesSearch;

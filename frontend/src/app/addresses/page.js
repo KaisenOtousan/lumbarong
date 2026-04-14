@@ -128,6 +128,7 @@ export default function AddressesPage() {
       ...prev,
       latitude: lat,
       longitude: lng,
+      houseNo: address.houseNumber || prev.houseNo,
       street: address.street || prev.street,
       barangay: address.barangay || prev.barangay,
       city: address.city || prev.city,

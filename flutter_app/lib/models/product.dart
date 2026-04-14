@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../config/api_config.dart';
 import 'user.dart';
 
 class ProductModel {
@@ -79,7 +80,33 @@ class ProductModel {
         }
       }
     } else if (imageSource is String && imageSource.trim().isNotEmpty) {
-      imgs.add(ProductImageModel(url: imageSource.trim()));
+      final trimmed = imageSource.trim();
+      if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+        try {
+          final parsed = jsonDecode(trimmed);
+          if (parsed is List) {
+            for (var e in parsed) {
+              if (e is Map) {
+                imgs.add(
+                  ProductImageModel.fromJson(Map<String, dynamic>.from(e)),
+                );
+              } else if (e is String && e.trim().isNotEmpty) {
+                imgs.add(ProductImageModel(url: e.trim()));
+              }
+            }
+          } else if (parsed is Map) {
+            imgs.add(
+              ProductImageModel.fromJson(Map<String, dynamic>.from(parsed)),
+            );
+          } else {
+            imgs.add(ProductImageModel(url: trimmed));
+          }
+        } catch (_) {
+          imgs.add(ProductImageModel(url: trimmed));
+        }
+      } else {
+        imgs.add(ProductImageModel(url: trimmed));
+      }
     } else if (imageSource is Map) {
       if (imageSource['images'] is List) {
         for (var e in imageSource['images'] as List) {
@@ -155,9 +182,28 @@ class ProductModel {
 
   String get imageUrl {
     if (images.isNotEmpty) {
-      return images.first.url;
+      final raw = images.first.url.trim();
+      if (raw.isEmpty) return '';
+
+      if (raw.startsWith('http://') ||
+          raw.startsWith('https://') ||
+          raw.startsWith('data:') ||
+          raw.startsWith('blob:')) {
+        return raw;
+      }
+
+      final base = Uri.parse(kApiBaseUrl);
+      final origin =
+          '${base.scheme}://${base.host}${base.hasPort ? ':${base.port}' : ''}';
+
+      if (raw.startsWith('/')) {
+        return '$origin$raw';
+      }
+
+      return '$origin/$raw';
     }
-    return 'https://placehold.co/300x400/ececec/aaaaaa?text=Barong';
+
+    return '';
   }
 
   /// Average rating computed from the ratings list.

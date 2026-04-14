@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -82,8 +83,20 @@ class ApiClient {
           {'url': 'https://picsum.photos/seed/lumbarong1/800/1000'},
         ],
         'ratings': [
-          {'id': 1, 'rating': 5, 'review': 'Excellent quality', 'userId': 'customer-2', 'productId': 'product-1'},
-          {'id': 2, 'rating': 4, 'review': 'Beautiful fabric', 'userId': 'customer-3', 'productId': 'product-1'},
+          {
+            'id': 1,
+            'rating': 5,
+            'review': 'Excellent quality',
+            'userId': 'customer-2',
+            'productId': 'product-1',
+          },
+          {
+            'id': 2,
+            'rating': 4,
+            'review': 'Beautiful fabric',
+            'userId': 'customer-3',
+            'productId': 'product-1',
+          },
         ],
         'soldCount': 20,
         'availableSizes': ['S', 'M', 'L', 'XL'],
@@ -107,9 +120,27 @@ class ApiClient {
           {'url': 'https://picsum.photos/seed/lumbarong2/800/1000'},
         ],
         'ratings': [
-          {'id': 3, 'rating': 5, 'review': 'Perfect fit', 'userId': 'customer-4', 'productId': 'product-2'},
-          {'id': 4, 'rating': 5, 'review': 'Looks premium', 'userId': 'customer-5', 'productId': 'product-2'},
-          {'id': 5, 'rating': 4, 'review': 'Great for events', 'userId': 'customer-6', 'productId': 'product-2'},
+          {
+            'id': 3,
+            'rating': 5,
+            'review': 'Perfect fit',
+            'userId': 'customer-4',
+            'productId': 'product-2',
+          },
+          {
+            'id': 4,
+            'rating': 5,
+            'review': 'Looks premium',
+            'userId': 'customer-5',
+            'productId': 'product-2',
+          },
+          {
+            'id': 5,
+            'rating': 4,
+            'review': 'Great for events',
+            'userId': 'customer-6',
+            'productId': 'product-2',
+          },
         ],
         'soldCount': 34,
         'availableSizes': ['M', 'L', 'XL'],
@@ -168,7 +199,9 @@ class ApiClient {
         'type': 'order',
         'link': '/orders',
         'read': false,
-        'createdAt': DateTime.now().subtract(const Duration(minutes: 18)).toIso8601String(),
+        'createdAt': DateTime.now()
+            .subtract(const Duration(minutes: 18))
+            .toIso8601String(),
       },
       {
         'id': 'notif-2',
@@ -177,7 +210,9 @@ class ApiClient {
         'type': 'message',
         'link': '/messages',
         'read': false,
-        'createdAt': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
+        'createdAt': DateTime.now()
+            .subtract(const Duration(hours: 2))
+            .toIso8601String(),
       },
       {
         'id': 'notif-3',
@@ -186,7 +221,9 @@ class ApiClient {
         'type': 'system',
         'link': '/profile/addresses',
         'read': true,
-        'createdAt': DateTime.now().subtract(const Duration(days: 1)).toIso8601String(),
+        'createdAt': DateTime.now()
+            .subtract(const Duration(days: 1))
+            .toIso8601String(),
       },
     ]);
 
@@ -399,6 +436,97 @@ class ApiClient {
         0,
         (sum, o) => sum + ((o['totalAmount'] as num?) ?? 0),
       );
+      final range = (queryParameters?['range']?.toString() ?? 'month')
+          .toLowerCase();
+      final performance = switch (range) {
+        'today' => [
+          {'name': '00:00', 'sales': 0},
+          {'name': '04:00', 'sales': 1800},
+          {'name': '08:00', 'sales': 6200},
+          {'name': '12:00', 'sales': 9400},
+          {'name': '16:00', 'sales': 7100},
+          {'name': '20:00', 'sales': 4300},
+        ],
+        'week' => [
+          {'name': 'Mon', 'sales': 6200},
+          {'name': 'Tue', 'sales': 3900},
+          {'name': 'Wed', 'sales': 8100},
+          {'name': 'Thu', 'sales': 6900},
+          {'name': 'Fri', 'sales': 10400},
+          {'name': 'Sat', 'sales': 9200},
+          {'name': 'Sun', 'sales': 7800},
+        ],
+        'year' => [
+          {'name': 'Jan', 'sales': 24000},
+          {'name': 'Feb', 'sales': 18200},
+          {'name': 'Mar', 'sales': 27800},
+          {'name': 'Apr', 'sales': 22400},
+          {'name': 'May', 'sales': 31900},
+          {'name': 'Jun', 'sales': 38700},
+          {'name': 'Jul', 'sales': 35500},
+          {'name': 'Aug', 'sales': 40200},
+          {'name': 'Sep', 'sales': 29800},
+          {'name': 'Oct', 'sales': 33600},
+          {'name': 'Nov', 'sales': 41800},
+          {'name': 'Dec', 'sales': 45200},
+        ],
+        _ => [
+          {'name': '1', 'sales': 1200},
+          {'name': '2', 'sales': 3400},
+          {'name': '3', 'sales': 2100},
+          {'name': '4', 'sales': 5600},
+          {'name': '5', 'sales': 4300},
+          {'name': '6', 'sales': 6900},
+          {'name': '7', 'sales': 8200},
+          {'name': '8', 'sales': 6100},
+          {'name': '9', 'sales': 9700},
+          {'name': '10', 'sales': 7400},
+        ],
+      };
+
+      final topProducts = sellerProducts.isEmpty
+          ? [
+              {
+                'id': 'mock-top-1',
+                'name': 'Heritage Barong Classic',
+                'category': 'Formal',
+                'sales': 18,
+                'revenue': 52182,
+                'maxSalesRef': 24,
+                'status': 'Top seller',
+                'rating': 4.9,
+                'reviewsCount': 8,
+              },
+              {
+                'id': 'mock-top-2',
+                'name': 'Modern Mestizo Set',
+                'category': 'Modern',
+                'sales': 12,
+                'revenue': 41988,
+                'maxSalesRef': 24,
+                'status': 'Trending',
+                'rating': 4.7,
+                'reviewsCount': 5,
+              },
+            ]
+          : sellerProducts.take(3).map((p) {
+              final stock = (p['stock'] as num?)?.toInt() ?? 0;
+              final sales = math.max(1, 24 - stock);
+              return {
+                'id': p['id'],
+                'name': p['name'],
+                'category': p['category'] ?? 'Other',
+                'sales': sales,
+                'revenue': sales * ((p['price'] as num?) ?? 0),
+                'maxSalesRef': 24,
+                'status': stock < 5
+                    ? 'Low stock'
+                    : (sales >= 18 ? 'Top seller' : 'Trending'),
+                'rating': 4.5,
+                'reviewsCount': math.max(1, sales ~/ 2),
+              };
+            }).toList();
+
       return _mockResponse<T>(
         path: path,
         method: 'GET',
@@ -407,6 +535,15 @@ class ApiClient {
           'orders': sellerOrders.length,
           'inquiries': 3,
           'products': sellerProducts.length,
+          'retention': '48.2',
+          'performance': performance,
+          'topProducts': topProducts,
+          'funnel': {
+            'visitors': 12500,
+            'views': 8400,
+            'checkout': 1800,
+            'completed': 1240,
+          },
         },
       );
     }
@@ -492,11 +629,13 @@ class ApiClient {
     }
 
     if (path == '/notifications') {
-      final list = _mockNotifications
-          .map((n) => Map<String, dynamic>.from(n))
-          .toList()
-        ..sort((a, b) =>
-            (b['createdAt']?.toString() ?? '').compareTo(a['createdAt']?.toString() ?? ''));
+      final list =
+          _mockNotifications.map((n) => Map<String, dynamic>.from(n)).toList()
+            ..sort(
+              (a, b) => (b['createdAt']?.toString() ?? '').compareTo(
+                a['createdAt']?.toString() ?? '',
+              ),
+            );
       return _mockResponse<T>(path: path, method: 'GET', payload: list);
     }
 
@@ -662,7 +801,9 @@ class ApiClient {
 
     if (path.startsWith('/notifications/') && path.endsWith('/read')) {
       final id = path.split('/')[2];
-      final index = _mockNotifications.indexWhere((n) => n['id']?.toString() == id);
+      final index = _mockNotifications.indexWhere(
+        (n) => n['id']?.toString() == id,
+      );
       if (index != -1) {
         _mockNotifications[index] = {
           ..._mockNotifications[index],

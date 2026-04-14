@@ -3,9 +3,11 @@ const cors = require('cors');
 const helmet = require('helmet');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const dotenv = require('dotenv');
 const { configureSocketServer } = require('./utils/socketUtility');
+const { ensureUploadDirs } = require('./utils/uploadPaths');
 
 dotenv.config();
 
@@ -23,7 +25,7 @@ app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-const allowedOrigins = [
+const allowedOrigins = new Set([
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3000',
@@ -32,24 +34,30 @@ const allowedOrigins = [
   'http://127.0.0.1:5000',
   'http://localhost',
   'capacitor://localhost',
-];
+]);
 
-const isLocalDevOrigin = (origin) => {
-  if (!origin || origin === 'null') return true;
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (allowedOrigins.has(origin)) return true;
+
   try {
     const parsed = new URL(origin);
-    return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(parsed.hostname);
+    // Flutter web dev servers run on random localhost ports.
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+    }
   } catch (_) {
     return false;
   }
-};
+
+  return false;
+}
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (allowedOrigins.indexOf(origin) !== -1 || isLocalDevOrigin(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
-      console.warn('Blocked by CORS origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -59,6 +67,38 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+ensureUploadDirs();
+
+// Resolve product images across new + legacy folders.
+app.get('/uploads/products/:fileName', (req, res) => {
+  const fileName = path.basename(req.params.fileName);
+  const searchDirs = [
+    path.join(__dirname, '../uploads/products'),
+    path.join(__dirname, '../public/uploads/products'),
+    path.join(__dirname, '../public/uploads'),
+  ];
+  const candidates = searchDirs.map((dir) => path.join(dir, fileName));
+
+  const found = candidates.find((p) => fs.existsSync(p));
+  if (found) {
+    return res.sendFile(found);
+  }
+
+  const imagePattern = /\.(jpg|jpeg|png|webp|gif|jfif)$/i;
+  for (const dir of searchDirs) {
+    if (!fs.existsSync(dir)) continue;
+    const fallback = fs
+      .readdirSync(dir)
+      .find((name) => imagePattern.test(name));
+
+    if (fallback) {
+      return res.sendFile(path.join(dir, fallback));
+    }
+  }
+
+  return res.status(404).json({ message: 'Image not found' });
+});
+
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 

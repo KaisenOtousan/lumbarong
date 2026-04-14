@@ -16,8 +16,10 @@ import {
   Clock,
   Package,
   CheckCircle2,
-  Facebook,
-  Instagram
+  Instagram,
+  Youtube,
+  Music,
+  Link as LinkIcon
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getProductImageSrc } from "@/lib/productImages";
@@ -101,22 +103,6 @@ export default function ShopClient() {
         setProducts(productsRes.data);
       } catch (err) {
         console.warn("Artisan not found in municipal registry.", err);
-        // Fallback for visual testing
-        setSeller({
-          id: id,
-          shopName: "Lumban Master Craft",
-          location: "Lumban, Laguna",
-          rating: 4.9,
-          joined: "12 Months Ago",
-          responseRate: "98%",
-          description: "A legacy of fine hand-embroidery passed down through generations. Our workshop specializes in traditional Pina and Jusi Barongs with modern silhouettes."
-        });
-        setProducts([
-          { id: 1, name: "Premium Barong Polo", price: 2450, rating: 5.0, image: "/images/product1.png" },
-          { id: 2, name: "Classic Jusi Barong", price: 3800, rating: 4.8, image: "/images/product2.png" },
-          { id: 3, name: "Modern Filipiniana Gown", price: 5200, rating: 5.0, image: "/images/product3.png" },
-          { id: 4, name: "Hand-crafted Scarf", price: 850, rating: 4.7, image: "/images/product4.png" },
-        ]);
       } finally {
         setLoading(false);
       }
@@ -154,20 +140,21 @@ export default function ShopClient() {
               <div className="relative w-full md:w-[320px] rounded-sm overflow-hidden bg-[var(--charcoal)] p-6 flex flex-col items-center text-white shadow-lg">
                 <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]"></div>
                 <div className="relative w-24 h-24 rounded-full border-4 border-white/20 overflow-hidden mb-4 bg-white/10 flex items-center justify-center font-serif text-4xl font-bold">
-                  {seller.shopName ? seller.shopName[0] : "L"}
+                  {seller.profilePhoto ? (
+                    <img src={seller.profilePhoto.startsWith('http') ? seller.profilePhoto : `http://localhost:5000/uploads/profile_photos/${seller.profilePhoto.split('/').pop()}`} alt={seller.shopName} className="w-full h-full object-cover" />
+                  ) : (
+                    seller.shopName ? seller.shopName[0] : "L"
+                  )}
                 </div>
                 <h2 className="relative text-xl font-bold mb-1">{seller.shopName || "Lumban Artisan"}</h2>
                 <div className="relative text-xs text-white/60 mb-6 flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Active 5 mins ago
+                  <Clock className="relative w-3 h-3" /> Active 5 mins ago
                 </div>
                 {userRole !== 'admin' && (
                   <div className="relative flex gap-2 w-full">
-                    <Link href={`/messages?sellerId=${id}&sellerName=${seller.shopName}`} className="flex-1 flex items-center justify-center gap-2 py-2 px-3 border border-white/30 text-xs font-bold uppercase tracking-wider hover:bg-white/10 transition-colors">
+                    <Link href={`/messages?sellerId=${id}&sellerName=${seller.shopName}`} className="w-full flex items-center justify-center gap-2 py-2 px-3 border border-white/30 text-xs font-bold uppercase tracking-wider hover:bg-white/10 transition-colors">
                       <MessageCircle className="w-3.5 h-3.5" /> Chat
                     </Link>
-                    <button onClick={handleFollow} className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 border border-white/30 text-xs font-bold uppercase tracking-wider transition-colors ${isFollowing ? 'bg-white text-[var(--charcoal)]' : 'hover:bg-white/10'}`}>
-                      <Plus className="w-3.5 h-3.5" /> {isFollowing ? 'Following' : 'Follow'}
-                    </button>
                   </div>
                 )}
               </div>
@@ -178,7 +165,7 @@ export default function ShopClient() {
                   <Package className="w-4 h-4 text-[var(--rust)]" />
                   <div className="flex justify-between w-full pr-4">
                     <span className="text-gray-500">Products:</span>
-                    <span className="text-[var(--rust)] font-medium font-serif">{products.length}</span>
+                    <span className="text-[var(--rust)] font-medium font-serif">{seller.productCount ?? products.length}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -191,8 +178,8 @@ export default function ShopClient() {
                 <div className="flex items-center gap-3">
                   <Clock className="w-4 h-4 text-[var(--rust)]" />
                   <div className="flex justify-between w-full pr-4">
-                    <span className="text-gray-500">Joined:</span>
-                    <span className="text-[var(--rust)] font-medium font-serif">{seller.joined || "12 Months Ago"}</span>
+                    <span className="text-gray-500">Established on:</span>
+                    <span className="text-[var(--rust)] font-medium font-serif">{seller.establishedOn || seller.joined || "Just Joined"}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -213,10 +200,48 @@ export default function ShopClient() {
                   <CheckCircle2 className="w-4 h-4 text-[var(--rust)]" />
                   <div className="flex justify-between w-full pr-4">
                     <span className="text-gray-500">Verified:</span>
-                    <span className="text-[var(--rust)] font-medium font-serif">Registry Gold</span>
+                    <span className="text-[var(--rust)] font-medium font-serif">
+                      {seller.isVerified ? "Registry Gold" : "Municipal Registry"}
+                    </span>
                   </div>
                 </div>
-                {seller.facebookLink && (
+                {seller.indigencyStatus && (
+                  <div className="flex items-center gap-3">
+                    <Package className="w-4 h-4 text-[var(--rust)]" />
+                    <div className="flex justify-between w-full pr-4">
+                      <span className="text-gray-500">Indigency Status:</span>
+                      <span className="text-[var(--rust)] font-medium font-serif">{seller.indigencyStatus}</span>
+                    </div>
+                  </div>
+                )}
+                {(() => {
+                  let links = seller.socialLinks;
+                  if (typeof links === 'string') { try { links = JSON.parse(links); } catch { links = []; } }
+                  if (!Array.isArray(links)) links = [];
+                  return links.filter(l => l.url && l.url.trim()).map((link, idx) => {
+                    const url = link.url.startsWith('http') ? link.url : `https://${link.url}`;
+                    const lower = url.toLowerCase();
+                    let Icon = LinkIcon;
+                    let color = "var(--rust)";
+                    let label = "Link";
+
+                    if (lower.includes('facebook.com')) { Icon = () => <Facebook className="w-4 h-4 text-[#1877F2]" />; color = "#1877F2"; label = "Facebook"; }
+                    else if (lower.includes('instagram.com')) { Icon = () => <Instagram className="w-4 h-4 text-[#E4405F]" />; color = "#E4405F"; label = "Instagram"; }
+                    else if (lower.includes('tiktok.com')) { Icon = () => <Music className="w-4 h-4 text-[#000000]" />; color = "#000000"; label = "TikTok"; }
+                    else if (lower.includes('youtube.com')) { Icon = () => <Youtube className="w-4 h-4 text-[#FF0000]" />; color = "#FF0000"; label = "YouTube"; }
+
+                    return (
+                      <div key={idx} className="flex items-center gap-3">
+                        <Icon />
+                        <div className="flex justify-between w-full pr-4">
+                          <span className="text-gray-500 truncate max-w-[80px]">{link.label || label}:</span>
+                          <a href={url} target="_blank" rel="noreferrer" className="font-medium font-serif hover:underline truncate max-w-[100px] text-right" style={{ color: color }}>View</a>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+                {(!seller.socialLinks || seller.socialLinks.length === 0) && seller.facebookLink && (
                   <div className="flex items-center gap-3">
                     <Facebook className="w-4 h-4 text-[#1877F2]" />
                     <div className="flex justify-between w-full pr-4">
@@ -225,7 +250,7 @@ export default function ShopClient() {
                     </div>
                   </div>
                 )}
-                {seller.instagramLink && (
+                {(!seller.socialLinks || seller.socialLinks.length === 0) && seller.instagramLink && (
                   <div className="flex items-center gap-3">
                     <Instagram className="w-4 h-4 text-[#E4405F]" />
                     <div className="flex justify-between w-full pr-4">
@@ -282,7 +307,7 @@ export default function ShopClient() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="text-[15px] font-bold text-[var(--rust)]">₱{(product.price || 0).toLocaleString()}</div>
-                    <div className="text-[10px] text-gray-400">Sold 12</div>
+                    <div className="text-[10px] text-gray-400">Sold {product.soldCount || 0}</div>
                   </div>
                 </div>
               </Link>

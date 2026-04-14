@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -925,6 +926,7 @@ class _OrderDetailSheet extends StatelessWidget {
                     child: Column(
                       children: [
                         ...items.map((item) {
+                          final thumbUrl = item.product?.imageUrl;
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.all(12),
@@ -945,10 +947,23 @@ class _OrderDetailSheet extends StatelessWidget {
                                       color: AppTheme.borderLight,
                                     ),
                                   ),
-                                  child: const Icon(
-                                    Icons.inventory_2_outlined,
-                                    color: AppTheme.borderLight,
-                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child:
+                                      (thumbUrl != null &&
+                                          thumbUrl.trim().isNotEmpty)
+                                      ? CachedNetworkImage(
+                                          imageUrl: thumbUrl,
+                                          fit: BoxFit.cover,
+                                          errorWidget: (context, url, error) =>
+                                              const Icon(
+                                                Icons.inventory_2_outlined,
+                                                color: AppTheme.borderLight,
+                                              ),
+                                        )
+                                      : const Icon(
+                                          Icons.inventory_2_outlined,
+                                          color: AppTheme.borderLight,
+                                        ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(

@@ -4,23 +4,20 @@ const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
+const { ensureUploadDirs, paymentsUploadDir } = require('../utils/uploadPaths');
 
-// Ensure upload directory exists
-const uploadDir = 'uploads/payments/';
-if (!fs.existsSync(uploadDir)){
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
+// Ensure static-backed upload directories exist
+ensureUploadDirs();
 
 // Multer storage configuration to keep file extensions
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadDir)
+    cb(null, paymentsUploadDir);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, 'payment-' + uniqueSuffix + path.extname(file.originalname))
-  }
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'payment-' + uniqueSuffix + path.extname(file.originalname));
+  },
 });
 
 const upload = multer({ storage: storage });

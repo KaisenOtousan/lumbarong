@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -24,56 +26,75 @@ class _AdminSellersScreenState extends State<AdminSellersScreen>
   List<Map<String, dynamic>> _allVerified = [];
   bool _loading = true;
   String _searchQuery = '';
+  Timer? _liveTimer;
+
+  bool _isSellerVerified(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      return normalized == 'true' || normalized == '1' || normalized == 'yes';
+    }
+    return false;
+  }
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadSellers();
+    _liveTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      _loadSellers(silent: true);
+    });
   }
 
   @override
   void dispose() {
+    _liveTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadSellers() async {
-    setState(() => _loading = true);
+  Future<void> _loadSellers({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _loading = true);
+    }
     try {
-      final res = await ApiClient().get('/admin/pending-sellers');
+      final sellersRes = await ApiClient().get('/auth/sellers');
       if (!mounted) return;
-      if (res.data is List) {
-        _allPending = (res.data as List)
+      if (sellersRes.data is List) {
+        final allSellers = (sellersRes.data as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
-      }
-      
-      final verifiedRes = await ApiClient().get('/auth/sellers');
-      if (!mounted) return;
-      if (verifiedRes.data is List) {
-        _allVerified = (verifiedRes.data as List)
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .where((s) => s['isVerified'] == true)
+
+        _allPending = allSellers
+            .where((s) => !_isSellerVerified(s['isVerified']))
+            .toList();
+        _allVerified = allSellers
+            .where((s) => _isSellerVerified(s['isVerified']))
             .toList();
       }
-      
+
       _applySearch();
     } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+    if (mounted && !silent) setState(() => _loading = false);
   }
 
   void _applySearch() {
     setState(() {
       final q = _searchQuery.toLowerCase();
       _pending = _allPending.where((s) {
-        final name = (s['shopName'] ?? s['name'] ?? '').toString().toLowerCase();
+        final name = (s['shopName'] ?? s['name'] ?? '')
+            .toString()
+            .toLowerCase();
         final email = (s['email'] ?? '').toString().toLowerCase();
         return name.contains(q) || email.contains(q);
       }).toList();
-      
+
       _verified = _allVerified.where((s) {
-        final name = (s['shopName'] ?? s['name'] ?? '').toString().toLowerCase();
+        final name = (s['shopName'] ?? s['name'] ?? '')
+            .toString()
+            .toLowerCase();
         final email = (s['email'] ?? '').toString().toLowerCase();
         return name.contains(q) || email.contains(q);
       }).toList();
@@ -150,7 +171,7 @@ class _AdminSellersScreenState extends State<AdminSellersScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFF9F6F2),
       appBar: const LumBarongAppBar(title: 'User Management', showBack: true),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 1),
+      bottomNavigationBar: const AppBottomNav(currentIndex: 3),
       body: Column(
         children: [
           Container(
@@ -181,10 +202,20 @@ class _AdminSellersScreenState extends State<AdminSellersScreen>
                     },
                     decoration: const InputDecoration(
                       hintText: 'Search artisans by name or email...',
-                      hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-                      prefixIcon: Icon(Icons.search, color: AppTheme.textMuted, size: 20),
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textMuted,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: AppTheme.textMuted,
+                        size: 20,
+                      ),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                     ),
                   ),
                 ),
@@ -205,8 +236,15 @@ class _AdminSellersScreenState extends State<AdminSellersScreen>
                     ),
                     indicatorSize: TabBarIndicatorSize.tab,
                     dividerColor: Colors.transparent,
-                    labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1),
-                    unselectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                    labelStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                     tabs: [
                       Tab(text: 'PENDING (${_pending.length})'),
                       Tab(text: 'VERIFIED (${_verified.length})'),
@@ -218,7 +256,9 @@ class _AdminSellersScreenState extends State<AdminSellersScreen>
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppTheme.primary),
+                  )
                 : TabBarView(
                     controller: _tabController,
                     children: [
@@ -273,12 +313,20 @@ class _SellerList extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: AppTheme.borderLight),
               ),
-              child: Icon(Icons.check_circle_outline, size: 48, color: Colors.green.shade300),
+              child: Icon(
+                Icons.check_circle_outline,
+                size: 48,
+                color: Colors.green.shade300,
+              ),
             ),
             const SizedBox(height: 16),
             const Text(
               'Queue is empty',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.charcoal),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.charcoal,
+              ),
             ),
             const Text(
               'No artisans found in this section.',
@@ -335,7 +383,9 @@ class _SellerList extends StatelessWidget {
                       ),
                       child: Center(
                         child: Text(
-                          (s['name']?.toString() ?? '?').substring(0, 1).toUpperCase(),
+                          (s['name']?.toString() ?? '?')
+                              .substring(0, 1)
+                              .toUpperCase(),
                           style: GoogleFonts.playfairDisplay(
                             fontWeight: FontWeight.w900,
                             color: Colors.white,
@@ -350,22 +400,35 @@ class _SellerList extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            (s['shopName'] ?? s['name'] ?? 'Artisan').toString(),
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                            (s['shopName'] ?? s['name'] ?? 'Artisan')
+                                .toString(),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             s['email']?.toString() ?? '',
-                            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, fontStyle: FontStyle.italic),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textMuted,
+                              fontStyle: FontStyle.italic,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: isVerified ? Colors.amber.shade100 : Colors.red.shade50,
+                                  color: isVerified
+                                      ? Colors.amber.shade100
+                                      : Colors.red.shade50,
                                   borderRadius: BorderRadius.circular(100),
                                 ),
                                 child: Text(
@@ -374,16 +437,25 @@ class _SellerList extends StatelessWidget {
                                     fontSize: 8,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 1,
-                                    color: isVerified ? Colors.amber.shade800 : Colors.red.shade700,
+                                    color: isVerified
+                                        ? Colors.amber.shade800
+                                        : Colors.red.shade700,
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              Icon(Icons.access_time, size: 10, color: AppTheme.textMuted),
+                              Icon(
+                                Icons.access_time,
+                                size: 10,
+                                color: AppTheme.textMuted,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 'Joined $dateStr',
-                                style: const TextStyle(fontSize: 9, color: AppTheme.textMuted),
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  color: AppTheme.textMuted,
+                                ),
                               ),
                             ],
                           ),
@@ -400,12 +472,21 @@ class _SellerList extends StatelessWidget {
                         child: OutlinedButton.icon(
                           onPressed: () => onViewDocs!(s),
                           icon: const Icon(Icons.visibility_outlined, size: 14),
-                          label: const Text('VIEW DOCS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                          label: const Text(
+                            'VIEW DOCS',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppTheme.charcoal,
                             side: const BorderSide(color: AppTheme.borderLight),
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -415,13 +496,25 @@ class _SellerList extends StatelessWidget {
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: () => onApprove!(sId.toString()),
-                          icon: const Icon(Icons.verified_user_outlined, size: 14),
-                          label: const Text('APPROVE ARTISAN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                          icon: const Icon(
+                            Icons.verified_user_outlined,
+                            size: 14,
+                          ),
+                          label: const Text(
+                            'APPROVE ARTISAN',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.charcoal,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -430,12 +523,21 @@ class _SellerList extends StatelessWidget {
                         child: OutlinedButton.icon(
                           onPressed: () => onRevoke!(sId.toString()),
                           icon: const Icon(Icons.block, size: 14),
-                          label: const Text('REVOKE VERIFICATION', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                          label: const Text(
+                            'REVOKE VERIFICATION',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red.shade600,
                             side: BorderSide(color: Colors.red.shade200),
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -454,7 +556,10 @@ class _DocumentVerificationModal extends StatelessWidget {
   final Map<String, dynamic> seller;
   final VoidCallback onApprove;
 
-  const _DocumentVerificationModal({required this.seller, required this.onApprove});
+  const _DocumentVerificationModal({
+    required this.seller,
+    required this.onApprove,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -470,8 +575,12 @@ class _DocumentVerificationModal extends StatelessWidget {
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: const Color(0xFFF9F6F2).withValues(alpha: 0.5),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-              border: const Border(bottom: BorderSide(color: AppTheme.borderLight)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(32),
+              ),
+              border: const Border(
+                bottom: BorderSide(color: AppTheme.borderLight),
+              ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -482,14 +591,27 @@ class _DocumentVerificationModal extends StatelessWidget {
                     children: [
                       Text(
                         'Verification Documents',
-                        style: GoogleFonts.playfairDisplay(fontSize: 24, fontWeight: FontWeight.w800, color: AppTheme.charcoal),
+                        style: GoogleFonts.playfairDisplay(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.charcoal,
+                        ),
                       ),
                       RichText(
                         text: TextSpan(
-                          style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textMuted,
+                          ),
                           children: [
                             const TextSpan(text: 'Reviewing credentials for '),
-                            TextSpan(text: seller['shopName'] ?? seller['name'], style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                            TextSpan(
+                              text: seller['shopName'] ?? seller['name'],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primary,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -499,7 +621,10 @@ class _DocumentVerificationModal extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context),
-                  style: IconButton.styleFrom(backgroundColor: Colors.white, shape: const CircleBorder()),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    shape: const CircleBorder(),
+                  ),
                 ),
               ],
             ),
@@ -509,11 +634,17 @@ class _DocumentVerificationModal extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  _DocumentCard(title: 'INDIGENCY CERTIFICATE', src: seller['indigencyCertificate']),
+                  _DocumentCard(
+                    title: 'INDIGENCY CERTIFICATE',
+                    src: seller['indigencyCertificate'],
+                  ),
                   const SizedBox(height: 24),
                   _DocumentCard(title: 'VALID ID', src: seller['validId']),
                   const SizedBox(height: 24),
-                  _DocumentCard(title: 'GCASH QR CODE', src: seller['gcashQrCode']),
+                  _DocumentCard(
+                    title: 'GCASH QR CODE',
+                    src: seller['gcashQrCode'],
+                  ),
                 ],
               ),
             ),
@@ -529,7 +660,14 @@ class _DocumentVerificationModal extends StatelessWidget {
                 Expanded(
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('BACK TO QUEUE', style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.textMuted, letterSpacing: 1)),
+                    child: const Text(
+                      'BACK TO QUEUE',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textMuted,
+                        letterSpacing: 1,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -539,10 +677,20 @@ class _DocumentVerificationModal extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.charcoal,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       elevation: 4,
                     ),
-                    child: const Text('APPROVE ARTISAN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1)),
+                    child: const Text(
+                      'APPROVE ARTISAN',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 1,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -569,7 +717,12 @@ class _DocumentCard extends StatelessWidget {
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(
             title,
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5, color: AppTheme.textMuted),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.5,
+              color: AppTheme.textMuted,
+            ),
           ),
         ),
         Container(
@@ -589,7 +742,9 @@ class _DocumentCard extends StatelessWidget {
                   child: CachedNetworkImage(
                     imageUrl: src!,
                     fit: BoxFit.cover,
-                    placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
+                    placeholder: (context, url) => const Center(
+                      child: CircularProgressIndicator(color: AppTheme.primary),
+                    ),
                     errorWidget: (context, url, error) => _buildEmptyState(),
                   ),
                 )
@@ -603,9 +758,20 @@ class _DocumentCard extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.broken_image_outlined, size: 40, color: AppTheme.textMuted.withValues(alpha: 0.3)),
+        Icon(
+          Icons.broken_image_outlined,
+          size: 40,
+          color: AppTheme.textMuted.withValues(alpha: 0.3),
+        ),
         const SizedBox(height: 12),
-        const Text('No document available', style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontStyle: FontStyle.italic)),
+        const Text(
+          'No document available',
+          style: TextStyle(
+            fontSize: 12,
+            color: AppTheme.textMuted,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
       ],
     );
   }

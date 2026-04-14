@@ -125,10 +125,10 @@ export default function RegisterPage() {
   };
 
   const inputStyle = {
-    paddingLeft: "3.5rem", paddingRight: "1.5rem", paddingTop: "1.125rem", paddingBottom: "1.125rem",
+    paddingLeft: "3rem", paddingRight: "1.25rem", paddingTop: "0.75rem", paddingBottom: "0.75rem",
     background: "var(--input-bg, #F9F6F2)", borderRadius: "9999px",
     border: "1.5px solid transparent", color: "var(--charcoal, #1C1917)",
-    width: "100%", fontSize: "0.875rem", fontWeight: 500, outline: "none", transition: "all 0.3s",
+    width: "100%", fontSize: "0.8rem", fontWeight: 500, outline: "none", transition: "all 0.3s",
   };
 
   const handleFocus = (e) => { e.target.style.borderColor = "var(--rust)"; e.target.style.background = "white"; };
@@ -150,7 +150,7 @@ export default function RegisterPage() {
         initial="hidden"
         animate="visible"
         className="w-full max-w-xl relative z-10"
-        style={{ background: "white", borderRadius: "2.5rem", border: "1px solid var(--border, #E5DDD5)", padding: "2.5rem", boxShadow: "0 20px 60px rgba(60,40,20,0.08)" }}
+        style={{ background: "white", borderRadius: "2.5rem", border: "1px solid var(--border, #E5DDD5)", padding: "2rem", boxShadow: "0 20px 60px rgba(60,40,20,0.08)" }}
       >
 
         <motion.div variants={containerVariants} initial="hidden" animate="visible">
@@ -166,7 +166,7 @@ export default function RegisterPage() {
               </button>
               <div className="text-center">
                 <Link href="/" className="inline-block mb-1">
-                  <span className="font-serif text-3xl font-black italic tracking-tight" style={{ color: "var(--rust, #C0422A)" }}>
+                  <span className="font-serif text-xl font-black italic tracking-tight" style={{ color: "var(--rust, #C0422A)" }}>
                     LumbaRong
                   </span>
                 </Link>
@@ -177,19 +177,19 @@ export default function RegisterPage() {
             </div>
 
             {/* Progress Steps */}
-            <div className="flex items-center justify-center mt-8 gap-4 px-10 text-center mx-auto">
-              {[1, 2].map((s) => (
-                <div key={s} className="flex-1 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-500"
-                    style={{ background: step >= s ? "var(--rust, #C0422A)" : "var(--input-bg, #F9F6F2)", color: step >= s ? "white" : "var(--muted)", boxShadow: step >= s ? "0 4px 12px rgba(192,66,42,0.25)" : "none" }}>
-                    {s}
-                  </div>
-                  {s === 1 && (
-                    <div className="flex-1 h-px transition-all duration-700"
-                      style={{ background: step > 1 ? "var(--rust, #C0422A)" : "var(--border, #E5DDD5)" }} />
-                  )}
+            <div className="flex items-center justify-center mt-8 mb-6 max-w-[280px] mx-auto px-4">
+              <div className="flex items-center w-full">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-500 shrink-0"
+                  style={{ background: step >= 1 ? "var(--rust, #C0422A)" : "var(--input-bg, #F9F6F2)", color: step >= 1 ? "white" : "var(--muted)", boxShadow: step >= 1 ? "0 4px 12px rgba(192,66,42,0.25)" : "none" }}>
+                  1
                 </div>
-              ))}
+                <div className="flex-1 h-px transition-all duration-700 mx-4"
+                  style={{ background: step > 1 ? "var(--rust, #C0422A)" : "var(--border, #E5DDD5)" }} />
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-500 shrink-0"
+                  style={{ background: step >= 2 ? "var(--rust, #C0422A)" : "var(--input-bg, #F9F6F2)", color: step >= 2 ? "white" : "var(--muted)", boxShadow: step >= 2 ? "0 4px 12px rgba(192,66,42,0.25)" : "none" }}>
+                  2
+                </div>
+              </div>
             </div>
           </motion.div>
 
@@ -267,7 +267,7 @@ export default function RegisterPage() {
                 <motion.div variants={itemVariants}>
                   <motion.button type="submit" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}
                     className="w-full text-white text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-3 mt-4"
-                    style={{ padding: "1.125rem", borderRadius: "9999px", background: "var(--bark, #3D2B1F)", boxShadow: "0 8px 24px rgba(60,43,31,0.18)", transition: "background 0.3s" }}
+                    style={{ padding: "0.875rem", borderRadius: "9999px", background: "var(--bark, #3D2B1F)", boxShadow: "0 6px 20px rgba(60,43,31,0.18)", transition: "background 0.3s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--rust, #C0422A)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bark, #3D2B1F)"; }}>
                     Continue <ArrowRight className="w-4 h-4" />
@@ -364,14 +364,14 @@ export default function RegisterPage() {
                 <div className="flex gap-4">
                   <button type="button" onClick={() => setStep(1)}
                     className="flex-1 font-bold uppercase text-[9px] tracking-widest transition-all"
-                    style={{ padding: "1.125rem", borderRadius: "9999px", border: "1.5px solid var(--border)", color: "var(--muted)", background: "transparent" }}
+                    style={{ padding: "0.875rem", borderRadius: "9999px", border: "1.5px solid var(--border)", color: "var(--muted)", background: "transparent" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--input-bg)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                     Back
                   </button>
                   <motion.button type="submit" disabled={loading} whileHover={{ scale: loading ? 1 : 1.02 }} whileTap={{ scale: loading ? 1 : 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}
                     className="flex-[2] text-white text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-2 disabled:opacity-50"
-                    style={{ padding: "1.125rem", borderRadius: "9999px", background: "var(--rust, #C0422A)", boxShadow: "0 8px 24px rgba(192,66,42,0.2)", transition: "background 0.3s" }}
+                    style={{ padding: "0.875rem", borderRadius: "9999px", background: "var(--rust, #C0422A)", boxShadow: "0 6px 20px rgba(192,66,42,0.2)", transition: "background 0.3s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--rust-light, #E8604A)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "var(--rust, #C0422A)"; }}>
                     {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign Up"}
@@ -387,7 +387,7 @@ export default function RegisterPage() {
                   style={{ background: "var(--input-bg)", color: "var(--sage, #8FA882)", transform: "rotate(6deg)" }}>
                   <CheckCircle2 className="w-10 h-10" />
                 </div>
-                <h2 className="font-serif text-3xl font-black mb-4" style={{ color: "var(--charcoal)" }}>Certified!</h2>
+                <h2 className="font-serif text-2xl font-black mb-4" style={{ color: "var(--charcoal)" }}>Certified!</h2>
                 <p className="max-w-xs mx-auto mb-10 text-[11px] font-medium leading-relaxed italic" style={{ color: "var(--muted)" }}>
                   Your heritage application has been logged.{" "}
                   {formData.role === "seller"
